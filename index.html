@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DXF 도면 편집기 - 사진 삽입</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📐 DXF 도면 편집기</h1>
+            <p>DXF 도면을 열고 사진을 삽입하세요</p>
+        </header>
+
+        <div class="toolbar">
+            <div class="tool-group">
+                <label class="btn btn-primary">
+                    <input type="file" id="dxfFile" accept=".dxf" style="display: none;">
+                    📁 DXF 파일 열기
+                </label>
+                <label class="btn btn-secondary">
+                    <input type="file" id="imageFile" accept="image/*" style="display: none;">
+                    🖼️ 사진 추가
+                </label>
+            </div>
+            
+            <div class="tool-group">
+                <button class="btn" id="zoomIn">🔍 확대</button>
+                <button class="btn" id="zoomOut">🔍 축소</button>
+                <button class="btn" id="resetView">↺  리셋</button>
+            </div>
+
+            <div class="tool-group">
+                <button class="btn btn-success" id="saveImage">💾 이미지로 저장</button>
+                <button class="btn" id="clearAll">🗑️ 전체 지우기</button>
+            </div>
+        </div>
+
+        <div class="info-panel">
+            <div id="fileInfo" class="info-item">
+                <span class="label">파일:</span>
+                <span class="value" id="fileName">파일을 선택하세요</span>
+            </div>
+            <div class="info-item">
+                <span class="label">모드:</span>
+                <span class="value" id="modeInfo">DXF 파일을 업로드하세요</span>
+            </div>
+            <div class="info-item">
+                <span class="label">삽입된 이미지:</span>
+                <span class="value" id="imageCount">0개</span>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="mainCanvas"></canvas>
+            <div id="instructions" class="instructions">
+                <p>📋 사용 방법:</p>
+                <ol>
+                    <li>DXF 파일을 업로드하여 도면을 불러옵니다</li>
+                    <li>사진 파일을 선택합니다</li>
+                    <li>도면에서 원하는 위치를 클릭하여 사진을 배치합니다</li>
+                    <li>배치된 사진을 드래그하여 이동하거나 모서리를 드래그하여 크기를 조절합니다</li>
+                    <li>완료되면 이미지로 저장합니다</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <!-- DXF Parser 라이브러리 -->
+    <script src="https://unpkg.com/dxf-parser@1.4.4/dist/dxf-parser.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+
