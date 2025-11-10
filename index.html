@@ -90,15 +90,37 @@
             background: #ffffff;
         }
 
+        #svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            cursor: grab;
+        }
+
+        #svg:active {
+            cursor: grabbing;
+        }
+
+        /* SVG 내부 모든 요소의 선 굵기 강제 */
+        #svg line,
+        #svg polyline,
+        #svg circle,
+        #svg ellipse,
+        #svg path,
+        #svg polygon {
+            stroke-width: 0.3 !important;
+            vector-effect: non-scaling-stroke !important;
+        }
+
         #canvas {
             position: absolute;
             top: 0;
             left: 0;
-            cursor: grab;
-        }
-
-        #canvas:active {
-            cursor: grabbing;
+            cursor: default;
+            pointer-events: auto;
         }
 
         .image-marker {

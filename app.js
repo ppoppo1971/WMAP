@@ -38,35 +38,42 @@ class DxfPhotoEditor {
     }
     
     getEntityColor(entity) {
-        // 디버깅용 (처음 5번만 출력)
+        // 디버깅용
         if (!this.colorDebugCount) this.colorDebugCount = 0;
         
         let color = null;
+        let source = 'default';
         
         // 1. entity.color 확인 (dxf-parser가 이미 변환한 값)
-        if (entity.color) {
+        if (entity.color !== undefined && entity.color !== null) {
             if (typeof entity.color === 'string') {
-                // 이미 문자열 형식 (#RRGGBB 또는 색상 이름)
                 color = entity.color;
+                source = 'entity.color(string)';
             } else if (typeof entity.color === 'number') {
-                // RGB 숫자를 16진수로 변환
-                color = '#' + entity.color.toString(16).padStart(6, '0');
+                color = '#' + entity.color.toString(16).padStart(6, '0').toUpperCase();
+                source = 'entity.color(number)';
             }
         }
         
-        // 2. colorIndex 확인 (AutoCAD 색상 인덱스)
-        if (!color && entity.colorIndex !== undefined) {
-            color = this.autocadColorIndexToHex(entity.colorIndex);
+        // 2. colorIndex 확인 (더 우선순위 높게 - 일반적으로 더 정확)
+        if ((!color || color === '#000000') && entity.colorIndex !== undefined && entity.colorIndex !== 0) {
+            const indexColor = this.autocadColorIndexToHex(entity.colorIndex);
+            if (indexColor && indexColor !== '#000000') {
+                color = indexColor;
+                source = 'colorIndex';
+            }
         }
         
-        // 3. 레이어 색상 확인
-        if (!color && entity.layer && this.dxfData.tables?.layers) {
+        // 3. 레이어 색상 확인 (ByLayer인 경우)
+        if ((!color || color === '#000000' || entity.colorIndex === 256) && entity.layer && this.dxfData.tables?.layers) {
             const layer = this.dxfData.tables.layers[entity.layer];
             if (layer && layer.color) {
                 if (typeof layer.color === 'string') {
                     color = layer.color;
+                    source = 'layer.color(string)';
                 } else if (typeof layer.color === 'number') {
-                    color = '#' + layer.color.toString(16).padStart(6, '0');
+                    color = '#' + layer.color.toString(16).padStart(6, '0').toUpperCase();
+                    source = 'layer.color(number)';
                 }
             }
         }
@@ -74,20 +81,24 @@ class DxfPhotoEditor {
         // 4. 기본값: 검은색
         if (!color) {
             color = '#000000';
+            source = 'default';
         }
         
         // 5. 흰색이면 검은색으로 변경 (배경과 구분)
-        const isWhite = color.toLowerCase() === '#ffffff' || 
-                        color.toLowerCase() === '#fff' ||
+        const isWhite = color.toUpperCase() === '#FFFFFF' || 
+                        color.toUpperCase() === '#FFF' ||
                         color.toLowerCase() === 'white';
         
         if (isWhite) {
+            console.log(`⚪ 흰색→검은색: ${entity.type} (원본: ${color})`);
             color = '#000000';
+            source += ' → white→black';
         }
         
-        // 디버깅 (처음 5개만)
-        if (this.colorDebugCount < 5) {
-            console.log(`🎨 색상: ${entity.type} → ${color} (원본: color=${entity.color}, colorIndex=${entity.colorIndex}, layer=${entity.layer})`);
+        // 디버깅 (모든 폴리선 출력)
+        if (this.colorDebugCount < 20 && (entity.type === 'LWPOLYLINE' || entity.type === 'POLYLINE')) {
+            console.log(`🎨 [${this.colorDebugCount}] ${entity.type} → ${color} (출처: ${source})`);
+            console.log(`   상세: color=${entity.color}, colorIndex=${entity.colorIndex}, layer="${entity.layer}"`);
             this.colorDebugCount++;
         }
         
@@ -285,13 +296,27 @@ class DxfPhotoEditor {
                 });
             }
             
+            // 레이어 정보 표시
+            if (this.dxfData.tables?.layers) {
+                const layers = this.dxfData.tables.layers;
+                const layerNames = Object.keys(layers);
+                console.log('\n📋 레이어 개수:', layerNames.length);
+                if (layerNames.length > 0) {
+                    console.log('레이어 색상:');
+                    layerNames.slice(0, 10).forEach(name => {
+                        const layer = layers[name];
+                        console.log(`  - "${name}": color=${layer.color}, colorIndex=${layer.colorIndex}`);
+                    });
+                }
+            }
+            
             // 블록 정보 표시
             if (this.dxfData.blocks) {
                 const blockNames = Object.keys(this.dxfData.blocks);
                 console.log('\n📦 블록 개수:', blockNames.length);
                 if (blockNames.length > 0) {
-                    console.log('블록 목록:', blockNames);
-                    blockNames.forEach(name => {
+                    console.log('블록 목록:', blockNames.slice(0, 10));
+                    blockNames.slice(0, 5).forEach(name => {
                         const block = this.dxfData.blocks[name];
                         if (block.entities) {
                             console.log(`  - ${name}: ${block.entities.length}개 엔티티`);
@@ -307,6 +332,7 @@ class DxfPhotoEditor {
             this.scale = 1;
             this.offsetX = 0;
             this.offsetY = 0;
+            this.colorDebugCount = 0; // 색상 디버그 카운터 리셋
             
             // DXF 렌더링
             this.fitDxfToView();
@@ -467,6 +493,9 @@ class DxfPhotoEditor {
                 height: paddedHeight
             };
             
+            // 원본 ViewBox 저장 (확대율 계산용)
+            this.originalViewBox = {...this.viewBox};
+            
             console.log(`ViewBox 설정:`, this.viewBox);
         } else {
             console.warn('도면 크기가 0입니다. 기본 뷰 사용.');
@@ -611,9 +640,13 @@ class DxfPhotoEditor {
         polyline.setAttribute('points', points);
         polyline.setAttribute('fill', 'none');
         polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        polyline.setAttribute('stroke-width', '0.3'); // 가장 얇게 (DXF width 무시)
+        polyline.setAttribute('stroke-width', '0.3'); // 항상 0.3으로 고정!
         polyline.setAttribute('stroke-linejoin', 'round');
+        polyline.setAttribute('stroke-linecap', 'round');
         polyline.setAttribute('vector-effect', 'non-scaling-stroke');
+        
+        // DXF width, startWidth, endWidth 속성 무시
+        // 항상 동일한 굵기로 표시
         
         return polyline;
     }
@@ -1043,8 +1076,15 @@ class DxfPhotoEditor {
         const centerY = this.viewBox.y + this.viewBox.height / 2;
         
         // 새로운 크기 계산
-        const newWidth = this.viewBox.width / factor;
-        const newHeight = this.viewBox.height / factor;
+        let newWidth = this.viewBox.width / factor;
+        let newHeight = this.viewBox.height / factor;
+        
+        // 최소/최대 크기 제한 (매우 넓은 범위로 설정)
+        const minSize = 0.001; // 최대 1000배 확대
+        const maxSize = 1000000; // 최대 축소
+        
+        newWidth = Math.max(minSize, Math.min(maxSize, newWidth));
+        newHeight = Math.max(minSize, Math.min(maxSize, newHeight));
         
         // 중심점 유지하면서 ViewBox 조정
         this.viewBox = {
@@ -1054,7 +1094,7 @@ class DxfPhotoEditor {
             height: newHeight
         };
         
-        console.log('🔍 Zoom:', factor, 'ViewBox:', this.viewBox);
+        console.log('🔍 Zoom:', factor, 'ViewBox width:', this.viewBox.width.toFixed(2), '(확대율:', (1 / (this.viewBox.width / this.originalViewBox?.width || 1)).toFixed(2) + 'x)');
         
         this.redraw();
     }
