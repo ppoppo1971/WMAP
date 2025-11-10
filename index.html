@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    
+    <!-- PWA 및 모바일 웹앱 설정 -->
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <title>DXF 도면 사진 삽입 앱</title>
     <style>
         * {
@@ -286,7 +290,7 @@
             <input type="file" id="dxf-input" accept=".dxf">
             
             <label for="photo-input" class="btn btn-secondary" id="add-photo-btn" disabled>사진 추가</label>
-            <input type="file" id="photo-input" accept="image/*">
+            <input type="file" id="photo-input" accept="image/*" capture="environment">
             
             <button class="btn" id="export-btn" disabled>내보내기 (ZIP)</button>
         </div>
@@ -325,9 +329,88 @@
         <div>처리 중...</div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.2.1/dist/dxf-parser.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <script src="app.js"></script>
+    <!-- 외부 라이브러리 (로컬 파일 우선) -->
+    <script>
+        console.log('📦 라이브러리 로드 시작...');
+        
+        // 로컬 파일 우선, CDN은 폴백
+        const libraries = [
+            {
+                name: 'DxfParser',
+                urls: [
+                    'libs/dxf-parser.min.js',  // 로컬 파일 (우선)
+                    'https://unpkg.com/dxf-parser@1.2.1/dist/dxf-parser.min.js',
+                    'https://cdn.jsdelivr.net/npm/dxf-parser@1.2.1/dist/dxf-parser.min.js'
+                ],
+                check: () => typeof DxfParser !== 'undefined'
+            },
+            {
+                name: 'JSZip',
+                urls: [
+                    'libs/jszip.min.js',  // 로컬 파일 (우선)
+                    'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js',
+                    'https://unpkg.com/jszip@3.10.1/dist/jszip.min.js'
+                ],
+                check: () => typeof JSZip !== 'undefined'
+            }
+        ];
+        
+        function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = () => resolve(url);
+                script.onerror = () => reject(url);
+                document.head.appendChild(script);
+            });
+        }
+        
+        async function loadLibrary(lib) {
+            console.log(`\n📦 ${lib.name} 로드 시도...`);
+            
+            for (const url of lib.urls) {
+                try {
+                    console.log(`   시도: ${url}`);
+                    await loadScript(url);
+                    
+                    // 짧은 대기 후 확인
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    if (lib.check()) {
+                        console.log(`   ✅ ${lib.name} 로드 성공!`);
+                        return true;
+                    }
+                } catch (error) {
+                    console.warn(`   ⚠️ 실패: ${url}`);
+                }
+            }
+            
+            console.error(`   ❌ ${lib.name} 로드 완전 실패!`);
+            return false;
+        }
+        
+        // 순차적으로 로드
+        async function loadAllLibraries() {
+            let allSuccess = true;
+            
+            for (const lib of libraries) {
+                const success = await loadLibrary(lib);
+                allSuccess = allSuccess && success;
+            }
+            
+            if (!allSuccess) {
+                alert('⚠️ 라이브러리 로드 실패\n\n해결 방법:\n\n1. npm install 실행\n2. npm run copy-libs 실행\n3. libs 폴더를 GitHub에 커밋\n\n또는:\n\n인터넷 연결을 확인하고\n페이지를 새로고침하세요.');
+            } else {
+                console.log('\n✅ 모든 라이브러리 로드 완료!\n');
+            }
+        }
+        
+        // 로드 시작
+        loadAllLibraries();
+    </script>
+    
+    <!-- 앱 스크립트 (defer로 라이브러리 로드 후 실행) -->
+    <script src="app.js" defer></script>
 </body>
 </html>
 

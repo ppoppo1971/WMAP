@@ -1,3 +1,14 @@
+// 라이브러리 로드 확인
+if (typeof DxfParser === 'undefined') {
+    console.error('DxfParser 라이브러리가 로드되지 않았습니다!');
+    console.error('CDN 연결을 확인하세요: https://unpkg.com/dxf-parser@1.2.1/dist/dxf-parser.min.js');
+}
+
+if (typeof JSZip === 'undefined') {
+    console.error('JSZip 라이브러리가 로드되지 않았습니다!');
+    console.error('CDN 연결을 확인하세요: https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+}
+
 // DXF 도면 편집기 앱
 class DxfPhotoEditor {
     constructor() {
@@ -114,6 +125,10 @@ class DxfPhotoEditor {
             console.log('DXF 버전:', version);
             
             // 4. DXF 파싱
+            if (typeof DxfParser === 'undefined') {
+                throw new Error('DXF 파서 라이브러리가 로드되지 않았습니다.\n\n페이지를 새로고침(F5)하거나 인터넷 연결을 확인해주세요.');
+            }
+            
             const parser = new DxfParser();
             this.dxfData = parser.parseSync(text);
             
@@ -622,6 +637,11 @@ class DxfPhotoEditor {
             return;
         }
         
+        if (typeof JSZip === 'undefined') {
+            alert('ZIP 라이브러리가 로드되지 않았습니다.\n\n페이지를 새로고침(F5)하거나 인터넷 연결을 확인해주세요.');
+            return;
+        }
+        
         this.showLoading(true);
         
         try {
@@ -735,14 +755,78 @@ EOF
     }
     
     downloadBlob(blob, filename) {
+        // iOS 감지
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        
+        console.log('다운로드 환경:', {
+            isIOS: isIOS,
+            isSafari: isSafari,
+            userAgent: navigator.userAgent
+        });
+        
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
+        
+        // iOS Safari 특별 처리
+        if (isIOS) {
+            // iOS에서는 target="_blank" 필요
+            a.target = '_blank';
+            
+            // 파일 크기 확인
+            const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+            console.log(`파일 크기: ${sizeMB}MB`);
+            
+            // 사용자에게 안내
+            if (isSafari) {
+                // Safari: 파일이 새 탭에서 열림
+                console.log('iOS Safari: 파일이 새 탭에서 열립니다.');
+            } else {
+                // Chrome: 다운로드 폴더로 저장
+                console.log('iOS Chrome: 파일이 다운로드됩니다.');
+            }
+        }
+        
         document.body.appendChild(a);
-        a.click();
+        
+        // iOS에서는 사용자 제스처 컨텍스트에서 실행되어야 함
+        try {
+            a.click();
+        } catch (error) {
+            console.error('다운로드 클릭 오류:', error);
+            // 폴백: 새 창으로 열기
+            window.open(url, '_blank');
+        }
+        
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        
+        // iOS에서는 URL을 즉시 해제하면 안됨
+        if (isIOS) {
+            setTimeout(() => {
+                URL.revokeObjectURL(url);
+                console.log('URL 해제됨');
+            }, 1000);
+            
+            // iOS 사용자 안내
+            setTimeout(() => {
+                if (isSafari) {
+                    alert('💾 파일 저장 방법:\n\n' +
+                          '1. 새 탭이 열리면 화면을 길게 터치\n' +
+                          '2. "파일에 다운로드" 선택\n' +
+                          '3. "파일" 앱에서 확인\n\n' +
+                          '또는:\n' +
+                          '공유 버튼(↑) → "파일에 저장"');
+                } else {
+                    alert('💾 파일이 다운로드되었습니다!\n\n' +
+                          '"다운로드" 또는 "파일" 앱에서 확인하세요.');
+                }
+            }, 500);
+        } else {
+            // 데스크탑
+            setTimeout(() => URL.revokeObjectURL(url), 100);
+        }
     }
 }
 
