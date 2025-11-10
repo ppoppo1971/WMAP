@@ -100,9 +100,39 @@ class DxfPhotoEditor {
         this.showLoading(true);
         
         try {
+            // 1. 파일 읽기
             const text = await file.text();
+            
+            // 2. DXF 파일 유효성 검사
+            if (!text.includes('SECTION') || !text.includes('ENTITIES')) {
+                throw new Error('올바른 DXF 파일 형식이 아닙니다.');
+            }
+            
+            // 3. DXF 버전 확인
+            const versionMatch = text.match(/\$ACADVER[\s\S]*?[\r\n]\s*1[\r\n]\s*AC(\d+)/);
+            const version = versionMatch ? versionMatch[1] : 'Unknown';
+            console.log('DXF 버전:', version);
+            
+            // 4. DXF 파싱
             const parser = new DxfParser();
             this.dxfData = parser.parseSync(text);
+            
+            // 5. 파싱된 데이터 검증
+            if (!this.dxfData) {
+                throw new Error('DXF 파일 파싱에 실패했습니다.');
+            }
+            
+            // 엔티티가 없는 경우 경고
+            if (!this.dxfData.entities || this.dxfData.entities.length === 0) {
+                console.warn('DXF 파일에 엔티티가 없습니다.');
+                if (!confirm('도면에 그려진 내용이 없는 것 같습니다. 계속하시겠습니까?')) {
+                    return;
+                }
+            }
+            
+            console.log('DXF 데이터:', this.dxfData);
+            console.log('엔티티 개수:', this.dxfData.entities ? this.dxfData.entities.length : 0);
+            
             this.dxfFileName = file.name.replace('.dxf', '');
             
             // 캔버스 초기화
@@ -119,10 +149,27 @@ class DxfPhotoEditor {
             document.getElementById('add-photo-btn').disabled = false;
             document.getElementById('export-btn').disabled = false;
             
-            alert('DXF 파일이 로드되었습니다!');
+            alert(`DXF 파일이 로드되었습니다!\n엔티티 개수: ${this.dxfData.entities ? this.dxfData.entities.length : 0}개`);
         } catch (error) {
             console.error('DXF 파일 로드 오류:', error);
-            alert('DXF 파일을 로드하는데 실패했습니다. 올바른 DXF 파일인지 확인해주세요.');
+            console.error('오류 상세:', error.message);
+            console.error('스택:', error.stack);
+            
+            // 더 자세한 오류 메시지
+            let errorMessage = 'DXF 파일을 로드하는데 실패했습니다.\n\n';
+            
+            if (error.message) {
+                errorMessage += `오류: ${error.message}\n\n`;
+            }
+            
+            errorMessage += '해결 방법:\n';
+            errorMessage += '1. AutoCAD에서 DXF를 다시 저장해주세요.\n';
+            errorMessage += '   - 파일 → 다른 이름으로 저장 → DXF\n';
+            errorMessage += '   - 버전: "AutoCAD 2000/LT2000 DXF" 선택\n';
+            errorMessage += '   - 또는 "AutoCAD R12/LT12 DXF" 선택\n\n';
+            errorMessage += '2. 브라우저 콘솔(F12)을 열어서 자세한 오류를 확인하세요.';
+            
+            alert(errorMessage);
         } finally {
             this.showLoading(false);
         }
@@ -133,35 +180,50 @@ class DxfPhotoEditor {
         
         // DXF 경계 계산
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let validPointCount = 0;
+        
+        const isValidNumber = (n) => {
+            return typeof n === 'number' && !isNaN(n) && isFinite(n);
+        };
         
         const processEntity = (entity) => {
-            if (entity.vertices) {
-                entity.vertices.forEach(v => {
-                    minX = Math.min(minX, v.x);
-                    minY = Math.min(minY, v.y);
-                    maxX = Math.max(maxX, v.x);
-                    maxY = Math.max(maxY, v.y);
-                });
-            } else {
-                if (entity.startPoint) {
-                    minX = Math.min(minX, entity.startPoint.x);
-                    minY = Math.min(minY, entity.startPoint.y);
-                    maxX = Math.max(maxX, entity.startPoint.x);
-                    maxY = Math.max(maxY, entity.startPoint.y);
+            try {
+                if (entity.vertices && Array.isArray(entity.vertices)) {
+                    entity.vertices.forEach(v => {
+                        if (v && isValidNumber(v.x) && isValidNumber(v.y)) {
+                            minX = Math.min(minX, v.x);
+                            minY = Math.min(minY, v.y);
+                            maxX = Math.max(maxX, v.x);
+                            maxY = Math.max(maxY, v.y);
+                            validPointCount++;
+                        }
+                    });
+                } else {
+                    if (entity.startPoint && isValidNumber(entity.startPoint.x) && isValidNumber(entity.startPoint.y)) {
+                        minX = Math.min(minX, entity.startPoint.x);
+                        minY = Math.min(minY, entity.startPoint.y);
+                        maxX = Math.max(maxX, entity.startPoint.x);
+                        maxY = Math.max(maxY, entity.startPoint.y);
+                        validPointCount++;
+                    }
+                    if (entity.endPoint && isValidNumber(entity.endPoint.x) && isValidNumber(entity.endPoint.y)) {
+                        minX = Math.min(minX, entity.endPoint.x);
+                        minY = Math.min(minY, entity.endPoint.y);
+                        maxX = Math.max(maxX, entity.endPoint.x);
+                        maxY = Math.max(maxY, entity.endPoint.y);
+                        validPointCount++;
+                    }
+                    if (entity.center && isValidNumber(entity.center.x) && isValidNumber(entity.center.y)) {
+                        const radius = isValidNumber(entity.radius) ? entity.radius : 0;
+                        minX = Math.min(minX, entity.center.x - radius);
+                        minY = Math.min(minY, entity.center.y - radius);
+                        maxX = Math.max(maxX, entity.center.x + radius);
+                        maxY = Math.max(maxY, entity.center.y + radius);
+                        validPointCount++;
+                    }
                 }
-                if (entity.endPoint) {
-                    minX = Math.min(minX, entity.endPoint.x);
-                    minY = Math.min(minY, entity.endPoint.y);
-                    maxX = Math.max(maxX, entity.endPoint.x);
-                    maxY = Math.max(maxY, entity.endPoint.y);
-                }
-                if (entity.center) {
-                    const radius = entity.radius || 0;
-                    minX = Math.min(minX, entity.center.x - radius);
-                    minY = Math.min(minY, entity.center.y - radius);
-                    maxX = Math.max(maxX, entity.center.x + radius);
-                    maxY = Math.max(maxY, entity.center.y + radius);
-                }
+            } catch (error) {
+                console.warn('엔티티 경계 계산 오류:', error);
             }
         };
         
@@ -169,16 +231,40 @@ class DxfPhotoEditor {
             this.dxfData.entities.forEach(processEntity);
         }
         
+        console.log(`경계 계산: 유효한 포인트 ${validPointCount}개`);
+        console.log(`경계: minX=${minX}, maxX=${maxX}, minY=${minY}, maxY=${maxY}`);
+        
+        // 유효한 경계가 없는 경우
+        if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
+            console.warn('유효한 경계를 계산할 수 없습니다. 기본 뷰 사용.');
+            this.scale = 1;
+            this.offsetX = this.canvas.width / 2;
+            this.offsetY = this.canvas.height / 2;
+            return;
+        }
+        
         const dxfWidth = maxX - minX;
         const dxfHeight = maxY - minY;
+        
+        console.log(`도면 크기: ${dxfWidth} x ${dxfHeight}`);
         
         if (dxfWidth > 0 && dxfHeight > 0) {
             const scaleX = (this.canvas.width * 0.8) / dxfWidth;
             const scaleY = (this.canvas.height * 0.8) / dxfHeight;
             this.scale = Math.min(scaleX, scaleY);
             
+            // 스케일이 너무 크거나 작으면 제한
+            this.scale = Math.max(0.001, Math.min(1000, this.scale));
+            
             this.offsetX = (this.canvas.width / 2) - ((minX + maxX) / 2) * this.scale;
             this.offsetY = (this.canvas.height / 2) + ((minY + maxY) / 2) * this.scale;
+            
+            console.log(`뷰포트 설정: scale=${this.scale}, offset=(${this.offsetX}, ${this.offsetY})`);
+        } else {
+            console.warn('도면 크기가 0입니다. 기본 뷰 사용.');
+            this.scale = 1;
+            this.offsetX = this.canvas.width / 2;
+            this.offsetY = this.canvas.height / 2;
         }
     }
     
@@ -222,27 +308,56 @@ class DxfPhotoEditor {
         this.ctx.strokeStyle = '#000';
         this.ctx.lineWidth = 1 / this.scale;
         
-        this.dxfData.entities.forEach(entity => {
-            switch (entity.type) {
-                case 'LINE':
-                    this.drawLine(entity);
-                    break;
-                case 'POLYLINE':
-                case 'LWPOLYLINE':
-                    this.drawPolyline(entity);
-                    break;
-                case 'CIRCLE':
-                    this.drawCircle(entity);
-                    break;
-                case 'ARC':
-                    this.drawArc(entity);
-                    break;
+        let drawnCount = 0;
+        let errorCount = 0;
+        
+        this.dxfData.entities.forEach((entity, index) => {
+            try {
+                if (!entity || !entity.type) {
+                    console.warn(`엔티티 ${index}: 타입이 없습니다.`);
+                    return;
+                }
+                
+                switch (entity.type) {
+                    case 'LINE':
+                        this.drawLine(entity);
+                        drawnCount++;
+                        break;
+                    case 'POLYLINE':
+                    case 'LWPOLYLINE':
+                        this.drawPolyline(entity);
+                        drawnCount++;
+                        break;
+                    case 'CIRCLE':
+                        this.drawCircle(entity);
+                        drawnCount++;
+                        break;
+                    case 'ARC':
+                        this.drawArc(entity);
+                        drawnCount++;
+                        break;
+                    default:
+                        // 미지원 엔티티 타입
+                        if (index < 10) { // 처음 10개만 로그
+                            console.log(`미지원 엔티티 타입: ${entity.type}`);
+                        }
+                }
+            } catch (error) {
+                errorCount++;
+                if (errorCount <= 5) { // 처음 5개 오류만 로그
+                    console.error(`엔티티 ${index} 렌더링 오류:`, error);
+                    console.error('엔티티 데이터:', entity);
+                }
             }
         });
+        
+        console.log(`렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
     }
     
     drawLine(entity) {
         if (!entity.startPoint || !entity.endPoint) return;
+        if (typeof entity.startPoint.x !== 'number' || typeof entity.startPoint.y !== 'number') return;
+        if (typeof entity.endPoint.x !== 'number' || typeof entity.endPoint.y !== 'number') return;
         
         this.ctx.beginPath();
         this.ctx.moveTo(entity.startPoint.x, entity.startPoint.y);
@@ -253,11 +368,19 @@ class DxfPhotoEditor {
     drawPolyline(entity) {
         if (!entity.vertices || entity.vertices.length < 2) return;
         
-        this.ctx.beginPath();
-        this.ctx.moveTo(entity.vertices[0].x, entity.vertices[0].y);
+        // 유효한 좌표만 필터링
+        const validVertices = entity.vertices.filter(v => 
+            v && typeof v.x === 'number' && typeof v.y === 'number' &&
+            !isNaN(v.x) && !isNaN(v.y)
+        );
         
-        for (let i = 1; i < entity.vertices.length; i++) {
-            this.ctx.lineTo(entity.vertices[i].x, entity.vertices[i].y);
+        if (validVertices.length < 2) return;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(validVertices[0].x, validVertices[0].y);
+        
+        for (let i = 1; i < validVertices.length; i++) {
+            this.ctx.lineTo(validVertices[i].x, validVertices[i].y);
         }
         
         this.ctx.stroke();
@@ -265,6 +388,9 @@ class DxfPhotoEditor {
     
     drawCircle(entity) {
         if (!entity.center || !entity.radius) return;
+        if (typeof entity.center.x !== 'number' || typeof entity.center.y !== 'number') return;
+        if (typeof entity.radius !== 'number' || entity.radius <= 0) return;
+        if (isNaN(entity.center.x) || isNaN(entity.center.y) || isNaN(entity.radius)) return;
         
         this.ctx.beginPath();
         this.ctx.arc(entity.center.x, entity.center.y, entity.radius, 0, Math.PI * 2);
@@ -273,9 +399,14 @@ class DxfPhotoEditor {
     
     drawArc(entity) {
         if (!entity.center || !entity.radius) return;
+        if (typeof entity.center.x !== 'number' || typeof entity.center.y !== 'number') return;
+        if (typeof entity.radius !== 'number' || entity.radius <= 0) return;
+        if (isNaN(entity.center.x) || isNaN(entity.center.y) || isNaN(entity.radius)) return;
         
         const startAngle = (entity.startAngle || 0) * Math.PI / 180;
         const endAngle = (entity.endAngle || 0) * Math.PI / 180;
+        
+        if (isNaN(startAngle) || isNaN(endAngle)) return;
         
         this.ctx.beginPath();
         this.ctx.arc(entity.center.x, entity.center.y, entity.radius, startAngle, endAngle);
