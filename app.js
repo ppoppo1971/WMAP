@@ -155,6 +155,21 @@ class DxfPhotoEditor {
             console.log('DXF 데이터:', this.dxfData);
             console.log('엔티티 개수:', this.dxfData.entities ? this.dxfData.entities.length : 0);
             
+            // 블록 정보 표시
+            if (this.dxfData.blocks) {
+                const blockNames = Object.keys(this.dxfData.blocks);
+                console.log('블록 개수:', blockNames.length);
+                if (blockNames.length > 0) {
+                    console.log('블록 목록:', blockNames);
+                    blockNames.forEach(name => {
+                        const block = this.dxfData.blocks[name];
+                        if (block.entities) {
+                            console.log(`  - ${name}: ${block.entities.length}개 엔티티`);
+                        }
+                    });
+                }
+            }
+            
             this.dxfFileName = file.name.replace('.dxf', '');
             
             // 캔버스 초기화
@@ -575,13 +590,60 @@ class DxfPhotoEditor {
     }
     
     drawInsert(entity) {
-        // 블록 삽입 - 현재는 위치에 십자 표시
+        // 블록 삽입 - 실제 블록 내용 렌더링
         if (!entity.position) return;
         if (typeof entity.position.x !== 'number' || typeof entity.position.y !== 'number') return;
+        if (!entity.name) return;
         
+        // 블록 정의 찾기
+        const block = this.dxfData.blocks && this.dxfData.blocks[entity.name];
+        
+        if (!block || !block.entities || block.entities.length === 0) {
+            // 블록 정의를 찾을 수 없으면 십자 표시
+            this.drawInsertFallback(entity);
+            return;
+        }
+        
+        this.ctx.save();
+        
+        // 블록 삽입점으로 이동
+        this.ctx.translate(entity.position.x, entity.position.y);
+        
+        // 회전 적용 (degrees to radians)
+        if (entity.rotation) {
+            this.ctx.rotate(entity.rotation * Math.PI / 180);
+        }
+        
+        // 스케일 적용
+        const xScale = entity.xScale || 1;
+        const yScale = entity.yScale || 1;
+        if (xScale !== 1 || yScale !== 1) {
+            this.ctx.scale(xScale, yScale);
+        }
+        
+        // 블록의 기준점 오프셋
+        if (block.position) {
+            this.ctx.translate(-block.position.x, -block.position.y);
+        }
+        
+        // 블록 내부 엔티티들 렌더링
+        block.entities.forEach(blockEntity => {
+            try {
+                this.drawEntity(blockEntity);
+            } catch (error) {
+                console.warn('블록 엔티티 렌더링 오류:', error);
+            }
+        });
+        
+        this.ctx.restore();
+    }
+    
+    drawInsertFallback(entity) {
+        // 블록을 찾을 수 없을 때 십자 표시
         const size = 5 / this.scale;
         
         this.ctx.save();
+        this.ctx.strokeStyle = '#FF6600'; // 오렌지색 (경고)
         this.ctx.beginPath();
         this.ctx.moveTo(entity.position.x - size, entity.position.y);
         this.ctx.lineTo(entity.position.x + size, entity.position.y);
@@ -592,12 +654,54 @@ class DxfPhotoEditor {
         // 블록 이름 표시
         if (entity.name) {
             this.ctx.scale(1, -1);
-            this.ctx.fillStyle = this.ctx.strokeStyle;
+            this.ctx.fillStyle = '#FF6600';
             this.ctx.font = `${5 / this.scale}px Arial`;
-            this.ctx.fillText(entity.name, entity.position.x + size, -entity.position.y);
+            this.ctx.fillText(`[${entity.name}]`, entity.position.x + size, -entity.position.y);
         }
         
         this.ctx.restore();
+    }
+    
+    drawEntity(entity) {
+        // 개별 엔티티를 그리는 범용 함수 (블록 내부 엔티티 렌더링용)
+        if (!entity || !entity.type) return;
+        
+        switch (entity.type) {
+            case 'LINE':
+                this.drawLine(entity);
+                break;
+            case 'POLYLINE':
+            case 'LWPOLYLINE':
+                this.drawPolyline(entity);
+                break;
+            case 'CIRCLE':
+                this.drawCircle(entity);
+                break;
+            case 'ARC':
+                this.drawArc(entity);
+                break;
+            case 'POINT':
+                this.drawPoint(entity);
+                break;
+            case 'TEXT':
+            case 'MTEXT':
+                this.drawText(entity);
+                break;
+            case 'INSERT':
+                // 재귀적 블록 삽입 (블록 안의 블록)
+                this.drawInsert(entity);
+                break;
+            case 'SPLINE':
+                this.drawSpline(entity);
+                break;
+            case 'ELLIPSE':
+                this.drawEllipse(entity);
+                break;
+            case 'SOLID':
+            case '3DFACE':
+                this.drawSolid(entity);
+                break;
+        }
     }
     
     drawSpline(entity) {
