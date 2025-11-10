@@ -211,6 +211,7 @@ class DxfPhotoEditor {
         
         const processEntity = (entity) => {
             try {
+                // POLYLINE vertices
                 if (entity.vertices && Array.isArray(entity.vertices)) {
                     entity.vertices.forEach(v => {
                         if (v && isValidNumber(v.x) && isValidNumber(v.y)) {
@@ -221,29 +222,67 @@ class DxfPhotoEditor {
                             validPointCount++;
                         }
                     });
-                } else {
-                    if (entity.startPoint && isValidNumber(entity.startPoint.x) && isValidNumber(entity.startPoint.y)) {
-                        minX = Math.min(minX, entity.startPoint.x);
-                        minY = Math.min(minY, entity.startPoint.y);
-                        maxX = Math.max(maxX, entity.startPoint.x);
-                        maxY = Math.max(maxY, entity.startPoint.y);
-                        validPointCount++;
-                    }
-                    if (entity.endPoint && isValidNumber(entity.endPoint.x) && isValidNumber(entity.endPoint.y)) {
-                        minX = Math.min(minX, entity.endPoint.x);
-                        minY = Math.min(minY, entity.endPoint.y);
-                        maxX = Math.max(maxX, entity.endPoint.x);
-                        maxY = Math.max(maxY, entity.endPoint.y);
-                        validPointCount++;
-                    }
-                    if (entity.center && isValidNumber(entity.center.x) && isValidNumber(entity.center.y)) {
-                        const radius = isValidNumber(entity.radius) ? entity.radius : 0;
-                        minX = Math.min(minX, entity.center.x - radius);
-                        minY = Math.min(minY, entity.center.y - radius);
-                        maxX = Math.max(maxX, entity.center.x + radius);
-                        maxY = Math.max(maxY, entity.center.y + radius);
-                        validPointCount++;
-                    }
+                }
+                
+                // LINE startPoint, endPoint
+                if (entity.startPoint && isValidNumber(entity.startPoint.x) && isValidNumber(entity.startPoint.y)) {
+                    minX = Math.min(minX, entity.startPoint.x);
+                    minY = Math.min(minY, entity.startPoint.y);
+                    maxX = Math.max(maxX, entity.startPoint.x);
+                    maxY = Math.max(maxY, entity.startPoint.y);
+                    validPointCount++;
+                }
+                if (entity.endPoint && isValidNumber(entity.endPoint.x) && isValidNumber(entity.endPoint.y)) {
+                    minX = Math.min(minX, entity.endPoint.x);
+                    minY = Math.min(minY, entity.endPoint.y);
+                    maxX = Math.max(maxX, entity.endPoint.x);
+                    maxY = Math.max(maxY, entity.endPoint.y);
+                    validPointCount++;
+                }
+                
+                // CIRCLE, ARC center + radius
+                if (entity.center && isValidNumber(entity.center.x) && isValidNumber(entity.center.y)) {
+                    const radius = isValidNumber(entity.radius) ? entity.radius : 0;
+                    minX = Math.min(minX, entity.center.x - radius);
+                    minY = Math.min(minY, entity.center.y - radius);
+                    maxX = Math.max(maxX, entity.center.x + radius);
+                    maxY = Math.max(maxY, entity.center.y + radius);
+                    validPointCount++;
+                }
+                
+                // POINT, TEXT, INSERT position
+                if (entity.position && isValidNumber(entity.position.x) && isValidNumber(entity.position.y)) {
+                    minX = Math.min(minX, entity.position.x);
+                    minY = Math.min(minY, entity.position.y);
+                    maxX = Math.max(maxX, entity.position.x);
+                    maxY = Math.max(maxY, entity.position.y);
+                    validPointCount++;
+                }
+                
+                // SPLINE controlPoints
+                if (entity.controlPoints && Array.isArray(entity.controlPoints)) {
+                    entity.controlPoints.forEach(cp => {
+                        if (cp && isValidNumber(cp.x) && isValidNumber(cp.y)) {
+                            minX = Math.min(minX, cp.x);
+                            minY = Math.min(minY, cp.y);
+                            maxX = Math.max(maxX, cp.x);
+                            maxY = Math.max(maxY, cp.y);
+                            validPointCount++;
+                        }
+                    });
+                }
+                
+                // SOLID, 3DFACE points
+                if (entity.points && Array.isArray(entity.points)) {
+                    entity.points.forEach(p => {
+                        if (p && isValidNumber(p.x) && isValidNumber(p.y)) {
+                            minX = Math.min(minX, p.x);
+                            minY = Math.min(minY, p.y);
+                            maxX = Math.max(maxX, p.x);
+                            maxY = Math.max(maxY, p.y);
+                            validPointCount++;
+                        }
+                    });
                 }
             } catch (error) {
                 console.warn('엔티티 경계 계산 오류:', error);
@@ -388,6 +427,32 @@ class DxfPhotoEditor {
                         this.drawArc(entity);
                         drawnCount++;
                         break;
+                    case 'POINT':
+                        this.drawPoint(entity);
+                        drawnCount++;
+                        break;
+                    case 'TEXT':
+                    case 'MTEXT':
+                        this.drawText(entity);
+                        drawnCount++;
+                        break;
+                    case 'INSERT':
+                        this.drawInsert(entity);
+                        drawnCount++;
+                        break;
+                    case 'SPLINE':
+                        this.drawSpline(entity);
+                        drawnCount++;
+                        break;
+                    case 'ELLIPSE':
+                        this.drawEllipse(entity);
+                        drawnCount++;
+                        break;
+                    case 'SOLID':
+                    case '3DFACE':
+                        this.drawSolid(entity);
+                        drawnCount++;
+                        break;
                     default:
                         // 미지원 엔티티 타입
                         if (index < 10) { // 처음 10개만 로그
@@ -455,14 +520,134 @@ class DxfPhotoEditor {
         if (typeof entity.radius !== 'number' || entity.radius <= 0) return;
         if (isNaN(entity.center.x) || isNaN(entity.center.y) || isNaN(entity.radius)) return;
         
-        const startAngle = (entity.startAngle || 0) * Math.PI / 180;
-        const endAngle = (entity.endAngle || 0) * Math.PI / 180;
+        const startAngle = (entity.startAngle || 0);
+        const endAngle = (entity.endAngle || 0);
         
         if (isNaN(startAngle) || isNaN(endAngle)) return;
         
         this.ctx.beginPath();
         this.ctx.arc(entity.center.x, entity.center.y, entity.radius, startAngle, endAngle);
         this.ctx.stroke();
+    }
+    
+    drawPoint(entity) {
+        if (!entity.position) return;
+        if (typeof entity.position.x !== 'number' || typeof entity.position.y !== 'number') return;
+        
+        const size = 2 / this.scale; // 포인트 크기
+        
+        this.ctx.save();
+        this.ctx.fillStyle = this.ctx.strokeStyle;
+        this.ctx.beginPath();
+        this.ctx.arc(entity.position.x, entity.position.y, size, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.restore();
+    }
+    
+    drawText(entity) {
+        if (!entity.startPoint && !entity.position) return;
+        if (!entity.text) return;
+        
+        const pos = entity.startPoint || entity.position;
+        if (typeof pos.x !== 'number' || typeof pos.y !== 'number') return;
+        
+        const height = entity.textHeight || entity.height || 10;
+        
+        this.ctx.save();
+        
+        // 텍스트는 Y축 반전 보정 필요
+        this.ctx.scale(1, -1);
+        this.ctx.fillStyle = this.ctx.strokeStyle;
+        this.ctx.font = `${height}px Arial`;
+        this.ctx.textAlign = 'left';
+        this.ctx.textBaseline = 'bottom';
+        
+        // 회전 적용
+        if (entity.rotation) {
+            this.ctx.translate(pos.x, -pos.y);
+            this.ctx.rotate(-entity.rotation);
+            this.ctx.fillText(entity.text, 0, 0);
+        } else {
+            this.ctx.fillText(entity.text, pos.x, -pos.y);
+        }
+        
+        this.ctx.restore();
+    }
+    
+    drawInsert(entity) {
+        // 블록 삽입 - 현재는 위치에 십자 표시
+        if (!entity.position) return;
+        if (typeof entity.position.x !== 'number' || typeof entity.position.y !== 'number') return;
+        
+        const size = 5 / this.scale;
+        
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.moveTo(entity.position.x - size, entity.position.y);
+        this.ctx.lineTo(entity.position.x + size, entity.position.y);
+        this.ctx.moveTo(entity.position.x, entity.position.y - size);
+        this.ctx.lineTo(entity.position.x, entity.position.y + size);
+        this.ctx.stroke();
+        
+        // 블록 이름 표시
+        if (entity.name) {
+            this.ctx.scale(1, -1);
+            this.ctx.fillStyle = this.ctx.strokeStyle;
+            this.ctx.font = `${5 / this.scale}px Arial`;
+            this.ctx.fillText(entity.name, entity.position.x + size, -entity.position.y);
+        }
+        
+        this.ctx.restore();
+    }
+    
+    drawSpline(entity) {
+        if (!entity.controlPoints || entity.controlPoints.length < 2) return;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(entity.controlPoints[0].x, entity.controlPoints[0].y);
+        
+        // 간단한 선형 보간 (실제 스플라인은 복잡함)
+        for (let i = 1; i < entity.controlPoints.length; i++) {
+            const cp = entity.controlPoints[i];
+            if (typeof cp.x === 'number' && typeof cp.y === 'number') {
+                this.ctx.lineTo(cp.x, cp.y);
+            }
+        }
+        
+        this.ctx.stroke();
+    }
+    
+    drawEllipse(entity) {
+        if (!entity.center || !entity.majorAxisEndPoint) return;
+        
+        const cx = entity.center.x;
+        const cy = entity.center.y;
+        const rx = Math.sqrt(
+            Math.pow(entity.majorAxisEndPoint.x, 2) + 
+            Math.pow(entity.majorAxisEndPoint.y, 2)
+        );
+        const ry = rx * (entity.axisRatio || 1);
+        
+        this.ctx.beginPath();
+        this.ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+        this.ctx.stroke();
+    }
+    
+    drawSolid(entity) {
+        if (!entity.points || entity.points.length < 3) return;
+        
+        this.ctx.beginPath();
+        this.ctx.moveTo(entity.points[0].x, entity.points[0].y);
+        
+        for (let i = 1; i < entity.points.length; i++) {
+            if (entity.points[i]) {
+                this.ctx.lineTo(entity.points[i].x, entity.points[i].y);
+            }
+        }
+        
+        this.ctx.closePath();
+        this.ctx.fillStyle = this.ctx.strokeStyle;
+        this.ctx.fill();
     }
     
     drawPhotos() {
