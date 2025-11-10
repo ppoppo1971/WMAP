@@ -503,7 +503,7 @@ class DxfPhotoEditor {
         line.setAttribute('x2', entity.vertices[1].x);
         line.setAttribute('y2', -entity.vertices[1].y);
         line.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        line.setAttribute('stroke-width', '0.5');
+        line.setAttribute('stroke-width', '0.3'); // 가장 얇게
         line.setAttribute('stroke-linecap', 'round');
         line.setAttribute('vector-effect', 'non-scaling-stroke'); // 벡터 효과 - 줌해도 선 굵기 유지
         
@@ -525,7 +525,7 @@ class DxfPhotoEditor {
         polyline.setAttribute('points', points);
         polyline.setAttribute('fill', 'none');
         polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        polyline.setAttribute('stroke-width', '0.5');
+        polyline.setAttribute('stroke-width', '0.3'); // 가장 얇게 (DXF width 무시)
         polyline.setAttribute('stroke-linejoin', 'round');
         polyline.setAttribute('vector-effect', 'non-scaling-stroke');
         
@@ -541,7 +541,7 @@ class DxfPhotoEditor {
         circle.setAttribute('r', entity.radius);
         circle.setAttribute('fill', 'none');
         circle.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        circle.setAttribute('stroke-width', '0.5');
+        circle.setAttribute('stroke-width', '0.3'); // 가장 얇게
         circle.setAttribute('vector-effect', 'non-scaling-stroke');
         
         return circle;
@@ -566,7 +566,7 @@ class DxfPhotoEditor {
         path.setAttribute('d', d);
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        path.setAttribute('stroke-width', '0.5');
+        path.setAttribute('stroke-width', '0.3'); // 가장 얇게
         path.setAttribute('vector-effect', 'non-scaling-stroke');
         
         return path;
@@ -578,7 +578,7 @@ class DxfPhotoEditor {
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', entity.position.x);
         circle.setAttribute('cy', -entity.position.y);
-        circle.setAttribute('r', '1');
+        circle.setAttribute('r', '0.2'); // 매우 작게 (0.3에서 0.2로)
         circle.setAttribute('fill', this.getEntityColor(entity)); // 실제 색상
         circle.setAttribute('vector-effect', 'non-scaling-stroke');
         
@@ -590,21 +590,30 @@ class DxfPhotoEditor {
         const pos = entity.startPoint || entity.position;
         if (!pos) return null;
         
+        const fontSize = entity.textHeight || entity.height || 10;
+        
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', pos.x);
-        text.setAttribute('y', -pos.y);
         text.setAttribute('fill', this.getEntityColor(entity)); // 실제 색상
-        text.setAttribute('font-family', 'Arial');
-        text.setAttribute('font-size', entity.textHeight || entity.height || 10);
-        text.setAttribute('transform', `scale(1, -1) translate(0, ${2 * pos.y})`); // Y축 반전 보정
+        text.setAttribute('font-family', 'Arial, sans-serif');
+        text.setAttribute('font-size', fontSize);
         text.textContent = entity.text;
         
+        // SVG는 Y축이 아래로 증가하므로 텍스트 변환 처리
         if (entity.rotation) {
+            // 회전이 있는 경우
+            const rotationDeg = -entity.rotation * 180 / Math.PI; // 라디안을 각도로, 반전
             text.setAttribute('transform', 
-                `translate(${pos.x}, ${-pos.y}) rotate(${-entity.rotation}) scale(1, -1)`);
+                `translate(${pos.x}, ${-pos.y}) rotate(${rotationDeg})`);
             text.setAttribute('x', 0);
             text.setAttribute('y', 0);
+        } else {
+            // 회전이 없는 경우
+            text.setAttribute('x', pos.x);
+            text.setAttribute('y', -pos.y);
         }
+        
+        // 텍스트 정렬
+        text.setAttribute('dominant-baseline', 'text-before-edge'); // 상단 정렬
         
         return text;
     }
@@ -664,7 +673,7 @@ class DxfPhotoEditor {
         line1.setAttribute('x2', entity.position.x + size);
         line1.setAttribute('y2', -entity.position.y);
         line1.setAttribute('stroke', '#FF6600');
-        line1.setAttribute('stroke-width', '1');
+        line1.setAttribute('stroke-width', '0.5'); // 얇게
         line1.setAttribute('vector-effect', 'non-scaling-stroke');
         
         const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
@@ -673,7 +682,7 @@ class DxfPhotoEditor {
         line2.setAttribute('x2', entity.position.x);
         line2.setAttribute('y2', -entity.position.y + size);
         line2.setAttribute('stroke', '#FF6600');
-        line2.setAttribute('stroke-width', '1');
+        line2.setAttribute('stroke-width', '0.5'); // 얇게
         line2.setAttribute('vector-effect', 'non-scaling-stroke');
         
         group.appendChild(line1);
@@ -694,7 +703,7 @@ class DxfPhotoEditor {
         polyline.setAttribute('points', points);
         polyline.setAttribute('fill', 'none');
         polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        polyline.setAttribute('stroke-width', '0.5');
+        polyline.setAttribute('stroke-width', '0.3'); // 가장 얇게
         polyline.setAttribute('vector-effect', 'non-scaling-stroke');
         
         return polyline;
@@ -718,7 +727,7 @@ class DxfPhotoEditor {
         ellipse.setAttribute('ry', ry);
         ellipse.setAttribute('fill', 'none');
         ellipse.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        ellipse.setAttribute('stroke-width', '0.5');
+        ellipse.setAttribute('stroke-width', '0.3'); // 가장 얇게
         ellipse.setAttribute('vector-effect', 'non-scaling-stroke');
         
         return ellipse;
@@ -738,7 +747,7 @@ class DxfPhotoEditor {
         polygon.setAttribute('points', points);
         polygon.setAttribute('fill', color + '40'); // 25% 투명도
         polygon.setAttribute('stroke', color); // 실제 색상
-        polygon.setAttribute('stroke-width', '0.5');
+        polygon.setAttribute('stroke-width', '0.3'); // 가장 얇게
         polygon.setAttribute('vector-effect', 'non-scaling-stroke');
         
         return polygon;
