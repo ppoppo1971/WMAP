@@ -343,7 +343,7 @@
                     'https://unpkg.com/dxf-parser@1.2.1/dist/dxf-parser.min.js',
                     'https://cdn.jsdelivr.net/npm/dxf-parser@1.2.1/dist/dxf-parser.min.js'
                 ],
-                check: () => typeof DxfParser !== 'undefined'
+                check: () => typeof DxfParser !== 'undefined' || typeof window.DxfParser !== 'undefined'
             },
             {
                 name: 'JSZip',
