@@ -37,6 +37,35 @@ class DxfPhotoEditor {
         this.init();
     }
     
+    getEntityColor(entity) {
+        // 엔티티 색상 가져오기
+        let color = entity.color;
+        let originalColor = color;
+        
+        // color가 숫자(RGB)인 경우 16진수로 변환
+        if (typeof color === 'number') {
+            color = '#' + color.toString(16).padStart(6, '0');
+        }
+        
+        // 색상이 없으면 검은색
+        if (!color) {
+            color = '#000000';
+        }
+        
+        // 흰색이면 검은색으로 변경 (배경과 구분)
+        const isWhite = color.toLowerCase() === '#ffffff' || 
+                        color.toLowerCase() === '#fff' ||
+                        color.toLowerCase() === 'white' ||
+                        entity.colorIndex === 7;
+        
+        if (isWhite) {
+            console.log(`⚪ 흰색 → 검은색 변환: ${entity.type} (원래: ${originalColor || entity.colorIndex})`);
+            color = '#000000';
+        }
+        
+        return color;
+    }
+    
     init() {
         this.setupCanvas();
         this.setupEventListeners();
@@ -162,10 +191,18 @@ class DxfPhotoEditor {
             console.log('DXF 데이터:', this.dxfData);
             console.log('엔티티 개수:', this.dxfData.entities ? this.dxfData.entities.length : 0);
             
+            // 색상 정보 확인 (처음 5개 엔티티)
+            if (this.dxfData.entities && this.dxfData.entities.length > 0) {
+                console.log('\n🎨 엔티티 색상 정보 (처음 5개):');
+                this.dxfData.entities.slice(0, 5).forEach((entity, i) => {
+                    console.log(`  ${i}. ${entity.type}: color=${entity.color}, colorIndex=${entity.colorIndex}`);
+                });
+            }
+            
             // 블록 정보 표시
             if (this.dxfData.blocks) {
                 const blockNames = Object.keys(this.dxfData.blocks);
-                console.log('블록 개수:', blockNames.length);
+                console.log('\n📦 블록 개수:', blockNames.length);
                 if (blockNames.length > 0) {
                     console.log('블록 목록:', blockNames);
                     blockNames.forEach(name => {
@@ -465,7 +502,7 @@ class DxfPhotoEditor {
         line.setAttribute('y1', -entity.vertices[0].y); // Y축 반전
         line.setAttribute('x2', entity.vertices[1].x);
         line.setAttribute('y2', -entity.vertices[1].y);
-        line.setAttribute('stroke', '#000000');
+        line.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         line.setAttribute('stroke-width', '0.5');
         line.setAttribute('stroke-linecap', 'round');
         line.setAttribute('vector-effect', 'non-scaling-stroke'); // 벡터 효과 - 줌해도 선 굵기 유지
@@ -487,7 +524,7 @@ class DxfPhotoEditor {
         const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
         polyline.setAttribute('points', points);
         polyline.setAttribute('fill', 'none');
-        polyline.setAttribute('stroke', '#000000');
+        polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         polyline.setAttribute('stroke-width', '0.5');
         polyline.setAttribute('stroke-linejoin', 'round');
         polyline.setAttribute('vector-effect', 'non-scaling-stroke');
@@ -503,7 +540,7 @@ class DxfPhotoEditor {
         circle.setAttribute('cy', -entity.center.y);
         circle.setAttribute('r', entity.radius);
         circle.setAttribute('fill', 'none');
-        circle.setAttribute('stroke', '#000000');
+        circle.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         circle.setAttribute('stroke-width', '0.5');
         circle.setAttribute('vector-effect', 'non-scaling-stroke');
         
@@ -528,7 +565,7 @@ class DxfPhotoEditor {
         const d = `M ${startX} ${-startY} A ${entity.radius} ${entity.radius} 0 ${largeArc} 1 ${endX} ${-endY}`;
         path.setAttribute('d', d);
         path.setAttribute('fill', 'none');
-        path.setAttribute('stroke', '#000000');
+        path.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         path.setAttribute('stroke-width', '0.5');
         path.setAttribute('vector-effect', 'non-scaling-stroke');
         
@@ -542,7 +579,7 @@ class DxfPhotoEditor {
         circle.setAttribute('cx', entity.position.x);
         circle.setAttribute('cy', -entity.position.y);
         circle.setAttribute('r', '1');
-        circle.setAttribute('fill', '#000000');
+        circle.setAttribute('fill', this.getEntityColor(entity)); // 실제 색상
         circle.setAttribute('vector-effect', 'non-scaling-stroke');
         
         return circle;
@@ -556,7 +593,7 @@ class DxfPhotoEditor {
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', pos.x);
         text.setAttribute('y', -pos.y);
-        text.setAttribute('fill', '#000000');
+        text.setAttribute('fill', this.getEntityColor(entity)); // 실제 색상
         text.setAttribute('font-family', 'Arial');
         text.setAttribute('font-size', entity.textHeight || entity.height || 10);
         text.setAttribute('transform', `scale(1, -1) translate(0, ${2 * pos.y})`); // Y축 반전 보정
@@ -656,7 +693,7 @@ class DxfPhotoEditor {
         const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
         polyline.setAttribute('points', points);
         polyline.setAttribute('fill', 'none');
-        polyline.setAttribute('stroke', '#000000');
+        polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         polyline.setAttribute('stroke-width', '0.5');
         polyline.setAttribute('vector-effect', 'non-scaling-stroke');
         
@@ -680,7 +717,7 @@ class DxfPhotoEditor {
         ellipse.setAttribute('rx', rx);
         ellipse.setAttribute('ry', ry);
         ellipse.setAttribute('fill', 'none');
-        ellipse.setAttribute('stroke', '#000000');
+        ellipse.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         ellipse.setAttribute('stroke-width', '0.5');
         ellipse.setAttribute('vector-effect', 'non-scaling-stroke');
         
@@ -695,10 +732,12 @@ class DxfPhotoEditor {
             .map(p => `${p.x},${-p.y}`)
             .join(' ');
         
+        const color = this.getEntityColor(entity);
+        
         const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
         polygon.setAttribute('points', points);
-        polygon.setAttribute('fill', '#CCCCCC');
-        polygon.setAttribute('stroke', '#000000');
+        polygon.setAttribute('fill', color + '40'); // 25% 투명도
+        polygon.setAttribute('stroke', color); // 실제 색상
         polygon.setAttribute('stroke-width', '0.5');
         polygon.setAttribute('vector-effect', 'non-scaling-stroke');
         
