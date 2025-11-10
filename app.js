@@ -87,6 +87,13 @@ class DxfPhotoEditor {
             this.zoom(0.8);
         });
         
+        // 전체보기 버튼
+        document.getElementById('fit-btn').addEventListener('click', () => {
+            console.log('🔍 전체보기 클릭');
+            this.fitDxfToCanvas();
+            this.redraw();
+        });
+        
         // 메모 모달
         document.getElementById('close-memo').addEventListener('click', () => {
             this.closeMemoModal();
@@ -163,6 +170,7 @@ class DxfPhotoEditor {
             // 버튼 활성화
             document.getElementById('add-photo-btn').disabled = false;
             document.getElementById('export-btn').disabled = false;
+            document.getElementById('fit-btn').disabled = false;
             
             alert(`DXF 파일이 로드되었습니다!\n엔티티 개수: ${this.dxfData.entities ? this.dxfData.entities.length : 0}개`);
         } catch (error) {
@@ -295,6 +303,8 @@ class DxfPhotoEditor {
     }
     
     redraw() {
+        console.log('🎨 redraw() 호출됨');
+        
         // 캔버스 초기화
         this.ctx.fillStyle = 'white';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -304,10 +314,30 @@ class DxfPhotoEditor {
             return;
         }
         
+        console.log('📐 캔버스 크기:', this.canvas.width, 'x', this.canvas.height);
+        console.log('🔧 뷰포트:', {
+            scale: this.scale,
+            offsetX: this.offsetX,
+            offsetY: this.offsetY
+        });
+        
+        // 디버그: 빨간 테두리 그리기
+        this.ctx.strokeStyle = 'red';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+        
         // DXF 그리기
         this.ctx.save();
         this.ctx.translate(this.offsetX, this.offsetY);
         this.ctx.scale(this.scale, -this.scale);
+        
+        // 디버그: 원점에 작은 원 그리기
+        this.ctx.save();
+        this.ctx.fillStyle = 'blue';
+        this.ctx.beginPath();
+        this.ctx.arc(0, 0, 5 / this.scale, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.restore();
         
         this.drawDxf();
         
@@ -315,13 +345,20 @@ class DxfPhotoEditor {
         
         // 사진 마커 그리기
         this.drawPhotos();
+        
+        console.log('✅ redraw() 완료');
     }
     
     drawDxf() {
         if (!this.dxfData || !this.dxfData.entities) return;
         
-        this.ctx.strokeStyle = '#000';
-        this.ctx.lineWidth = 1 / this.scale;
+        console.log('🖊️ drawDxf() 시작, 엔티티:', this.dxfData.entities.length);
+        
+        // 굵고 선명한 검은색
+        this.ctx.strokeStyle = '#000000';
+        this.ctx.lineWidth = 2 / this.scale;  // 더 굵게
+        this.ctx.lineCap = 'round';
+        this.ctx.lineJoin = 'round';
         
         let drawnCount = 0;
         let errorCount = 0;
