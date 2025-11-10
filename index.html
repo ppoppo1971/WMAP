@@ -297,7 +297,8 @@
         </div>
 
         <div class="canvas-container" id="canvas-container">
-            <canvas id="canvas"></canvas>
+            <svg id="svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white;"></svg>
+            <canvas id="canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
             <div class="zoom-controls">
                 <button class="zoom-btn" id="zoom-in">+</button>
                 <button class="zoom-btn" id="zoom-out">−</button>

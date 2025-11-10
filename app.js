@@ -14,12 +14,18 @@ class DxfPhotoEditor {
     constructor() {
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
+        this.svg = document.getElementById('svg');
         this.container = document.getElementById('canvas-container');
+        
+        // SVG 그룹 요소 생성
+        this.svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        this.svg.appendChild(this.svgGroup);
         
         // 상태 관리
         this.dxfData = null;
         this.dxfFileName = '';
         this.photos = []; // { id, x, y, width, height, imageData, memo, fileName }
+        this.viewBox = { x: 0, y: 0, width: 1000, height: 1000 };
         this.scale = 1;
         this.offsetX = 0;
         this.offsetY = 0;
@@ -65,18 +71,19 @@ class DxfPhotoEditor {
             this.exportToZip();
         });
         
-        // 캔버스 드래그 (팬)
-        this.canvas.addEventListener('mousedown', this.onMouseDown.bind(this));
-        this.canvas.addEventListener('mousemove', this.onMouseMove.bind(this));
-        this.canvas.addEventListener('mouseup', this.onMouseUp.bind(this));
+        // SVG 드래그 (팬) - SVG에서 이벤트 받기
+        this.svg.addEventListener('mousedown', this.onMouseDown.bind(this));
+        this.svg.addEventListener('mousemove', this.onMouseMove.bind(this));
+        this.svg.addEventListener('mouseup', this.onMouseUp.bind(this));
         
-        // 터치 이벤트 (모바일)
-        this.canvas.addEventListener('touchstart', this.onTouchStart.bind(this));
-        this.canvas.addEventListener('touchmove', this.onTouchMove.bind(this));
-        this.canvas.addEventListener('touchend', this.onTouchEnd.bind(this));
+        // 터치 이벤트 (모바일) - SVG에서
+        this.svg.addEventListener('touchstart', this.onTouchStart.bind(this));
+        this.svg.addEventListener('touchmove', this.onTouchMove.bind(this));
+        this.svg.addEventListener('touchend', this.onTouchEnd.bind(this));
         
-        // 사진 클릭
+        // 사진 클릭 - Canvas에서
         this.canvas.addEventListener('click', this.onCanvasClick.bind(this));
+        this.canvas.style.pointerEvents = 'auto'; // 사진 클릭 위해 활성화
         
         // 줌 버튼
         document.getElementById('zoom-in').addEventListener('click', () => {
@@ -90,7 +97,7 @@ class DxfPhotoEditor {
         // 전체보기 버튼
         document.getElementById('fit-btn').addEventListener('click', () => {
             console.log('🔍 전체보기 클릭');
-            this.fitDxfToCanvas();
+            this.fitDxfToView();
             this.redraw();
         });
         
@@ -179,7 +186,7 @@ class DxfPhotoEditor {
             this.offsetY = 0;
             
             // DXF 렌더링
-            this.fitDxfToCanvas();
+            this.fitDxfToView();
             this.redraw();
             
             // 버튼 활성화
@@ -213,7 +220,7 @@ class DxfPhotoEditor {
         }
     }
     
-    fitDxfToCanvas() {
+    fitDxfToView() {
         if (!this.dxfData) return;
         
         // DXF 경계 계산
@@ -314,9 +321,7 @@ class DxfPhotoEditor {
         // 유효한 경계가 없는 경우
         if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
             console.warn('유효한 경계를 계산할 수 없습니다. 기본 뷰 사용.');
-            this.scale = 1;
-            this.offsetX = this.canvas.width / 2;
-            this.offsetY = this.canvas.height / 2;
+            this.viewBox = { x: -500, y: -500, width: 1000, height: 1000 };
             return;
         }
         
@@ -326,22 +331,23 @@ class DxfPhotoEditor {
         console.log(`도면 크기: ${dxfWidth} x ${dxfHeight}`);
         
         if (dxfWidth > 0 && dxfHeight > 0) {
-            const scaleX = (this.canvas.width * 0.8) / dxfWidth;
-            const scaleY = (this.canvas.height * 0.8) / dxfHeight;
-            this.scale = Math.min(scaleX, scaleY);
+            // 여백 추가 (10%)
+            const margin = 0.1;
+            const paddedWidth = dxfWidth * (1 + margin * 2);
+            const paddedHeight = dxfHeight * (1 + margin * 2);
             
-            // 스케일이 너무 크거나 작으면 제한
-            this.scale = Math.max(0.001, Math.min(1000, this.scale));
+            // ViewBox 설정 (SVG는 Y축이 아래로 증가하므로 음수로)
+            this.viewBox = {
+                x: minX - dxfWidth * margin,
+                y: -(maxY + dxfHeight * margin), // Y축 반전
+                width: paddedWidth,
+                height: paddedHeight
+            };
             
-            this.offsetX = (this.canvas.width / 2) - ((minX + maxX) / 2) * this.scale;
-            this.offsetY = (this.canvas.height / 2) + ((minY + maxY) / 2) * this.scale;
-            
-            console.log(`뷰포트 설정: scale=${this.scale}, offset=(${this.offsetX}, ${this.offsetY})`);
+            console.log(`ViewBox 설정:`, this.viewBox);
         } else {
             console.warn('도면 크기가 0입니다. 기본 뷰 사용.');
-            this.scale = 1;
-            this.offsetX = this.canvas.width / 2;
-            this.offsetY = this.canvas.height / 2;
+            this.viewBox = { x: -500, y: -500, width: 1000, height: 1000 };
         }
     }
     
@@ -359,60 +365,40 @@ class DxfPhotoEditor {
     redraw() {
         console.log('🎨 redraw() 호출됨');
         
-        // 캔버스 초기화
-        this.ctx.fillStyle = 'white';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-        
         if (!this.dxfData) {
             this.drawWelcomeScreen();
+            this.clearCanvas();
             return;
         }
         
-        console.log('📐 캔버스 크기:', this.canvas.width, 'x', this.canvas.height);
-        console.log('🔧 뷰포트:', {
-            scale: this.scale,
-            offsetX: this.offsetX,
-            offsetY: this.offsetY
-        });
+        console.log('📐 ViewBox:', this.viewBox);
         
-        // 디버그: 빨간 테두리 그리기
-        this.ctx.strokeStyle = 'red';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(0, 0, this.canvas.width, this.canvas.height);
+        // 1. SVG로 DXF 렌더링 (벡터)
+        this.drawDxfSvg();
         
-        // DXF 그리기
-        this.ctx.save();
-        this.ctx.translate(this.offsetX, this.offsetY);
-        this.ctx.scale(this.scale, -this.scale);
-        
-        // 디버그: 원점에 작은 원 그리기
-        this.ctx.save();
-        this.ctx.fillStyle = 'blue';
-        this.ctx.beginPath();
-        this.ctx.arc(0, 0, 5 / this.scale, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.restore();
-        
-        this.drawDxf();
-        
-        this.ctx.restore();
-        
-        // 사진 마커 그리기
-        this.drawPhotos();
+        // 2. Canvas로 사진 렌더링 (래스터)
+        this.drawPhotosCanvas();
         
         console.log('✅ redraw() 완료');
     }
     
-    drawDxf() {
+    clearCanvas() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+    
+    drawDxfSvg() {
+        // SVG 초기화
+        while (this.svgGroup.firstChild) {
+            this.svgGroup.removeChild(this.svgGroup.firstChild);
+        }
+        
         if (!this.dxfData || !this.dxfData.entities) return;
         
-        console.log('🖊️ drawDxf() 시작, 엔티티:', this.dxfData.entities.length);
+        // ViewBox 설정
+        this.svg.setAttribute('viewBox', 
+            `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.width} ${this.viewBox.height}`);
         
-        // 굵고 선명한 검은색
-        this.ctx.strokeStyle = '#000000';
-        this.ctx.lineWidth = 2 / this.scale;  // 더 굵게
-        this.ctx.lineCap = 'round';
-        this.ctx.lineJoin = 'round';
+        console.log('🖊️ SVG drawDxf() 시작, 엔티티:', this.dxfData.entities.length);
         
         let drawnCount = 0;
         let errorCount = 0;
@@ -424,345 +410,322 @@ class DxfPhotoEditor {
                     return;
                 }
                 
-                switch (entity.type) {
-                    case 'LINE':
-                        this.drawLine(entity);
-                        drawnCount++;
-                        break;
-                    case 'POLYLINE':
-                    case 'LWPOLYLINE':
-                        this.drawPolyline(entity);
-                        drawnCount++;
-                        break;
-                    case 'CIRCLE':
-                        this.drawCircle(entity);
-                        drawnCount++;
-                        break;
-                    case 'ARC':
-                        this.drawArc(entity);
-                        drawnCount++;
-                        break;
-                    case 'POINT':
-                        this.drawPoint(entity);
-                        drawnCount++;
-                        break;
-                    case 'TEXT':
-                    case 'MTEXT':
-                        this.drawText(entity);
-                        drawnCount++;
-                        break;
-                    case 'INSERT':
-                        this.drawInsert(entity);
-                        drawnCount++;
-                        break;
-                    case 'SPLINE':
-                        this.drawSpline(entity);
-                        drawnCount++;
-                        break;
-                    case 'ELLIPSE':
-                        this.drawEllipse(entity);
-                        drawnCount++;
-                        break;
-                    case 'SOLID':
-                    case '3DFACE':
-                        this.drawSolid(entity);
-                        drawnCount++;
-                        break;
-                    default:
-                        // 미지원 엔티티 타입
-                        if (index < 10) { // 처음 10개만 로그
-                            console.log(`미지원 엔티티 타입: ${entity.type}`);
-                        }
+                const element = this.createSvgElement(entity);
+                if (element) {
+                    this.svgGroup.appendChild(element);
+                    drawnCount++;
                 }
             } catch (error) {
                 errorCount++;
-                if (errorCount <= 5) { // 처음 5개 오류만 로그
+                if (errorCount <= 5) {
                     console.error(`엔티티 ${index} 렌더링 오류:`, error);
-                    console.error('엔티티 데이터:', entity);
                 }
             }
         });
         
-        console.log(`렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
+        console.log(`SVG 렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
     }
     
-    drawLine(entity) {
-        if (!entity.startPoint || !entity.endPoint) return;
-        if (typeof entity.startPoint.x !== 'number' || typeof entity.startPoint.y !== 'number') return;
-        if (typeof entity.endPoint.x !== 'number' || typeof entity.endPoint.y !== 'number') return;
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(entity.startPoint.x, entity.startPoint.y);
-        this.ctx.lineTo(entity.endPoint.x, entity.endPoint.y);
-        this.ctx.stroke();
+    createSvgElement(entity) {
+        // 엔티티 타입별로 SVG 요소 생성
+        switch (entity.type) {
+            case 'LINE':
+                return this.createSvgLine(entity);
+            case 'POLYLINE':
+            case 'LWPOLYLINE':
+                return this.createSvgPolyline(entity);
+            case 'CIRCLE':
+                return this.createSvgCircle(entity);
+            case 'ARC':
+                return this.createSvgArc(entity);
+            case 'POINT':
+                return this.createSvgPoint(entity);
+            case 'TEXT':
+            case 'MTEXT':
+                return this.createSvgText(entity);
+            case 'INSERT':
+                return this.createSvgInsert(entity);
+            case 'SPLINE':
+                return this.createSvgSpline(entity);
+            case 'ELLIPSE':
+                return this.createSvgEllipse(entity);
+            case 'SOLID':
+            case '3DFACE':
+                return this.createSvgSolid(entity);
+            default:
+                return null;
+        }
     }
     
-    drawPolyline(entity) {
-        if (!entity.vertices || entity.vertices.length < 2) return;
+    createSvgLine(entity) {
+        if (!entity.vertices || entity.vertices.length < 2) return null;
         
-        // 유효한 좌표만 필터링
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', entity.vertices[0].x);
+        line.setAttribute('y1', -entity.vertices[0].y); // Y축 반전
+        line.setAttribute('x2', entity.vertices[1].x);
+        line.setAttribute('y2', -entity.vertices[1].y);
+        line.setAttribute('stroke', '#000000');
+        line.setAttribute('stroke-width', '0.5');
+        line.setAttribute('stroke-linecap', 'round');
+        line.setAttribute('vector-effect', 'non-scaling-stroke'); // 벡터 효과 - 줌해도 선 굵기 유지
+        
+        return line;
+    }
+    
+    createSvgPolyline(entity) {
+        if (!entity.vertices || entity.vertices.length < 2) return null;
+        
         const validVertices = entity.vertices.filter(v => 
-            v && typeof v.x === 'number' && typeof v.y === 'number' &&
-            !isNaN(v.x) && !isNaN(v.y)
+            v && typeof v.x === 'number' && typeof v.y === 'number'
         );
         
-        if (validVertices.length < 2) return;
+        if (validVertices.length < 2) return null;
         
-        this.ctx.beginPath();
-        this.ctx.moveTo(validVertices[0].x, validVertices[0].y);
+        const points = validVertices.map(v => `${v.x},${-v.y}`).join(' ');
         
-        for (let i = 1; i < validVertices.length; i++) {
-            this.ctx.lineTo(validVertices[i].x, validVertices[i].y);
-        }
+        const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline.setAttribute('points', points);
+        polyline.setAttribute('fill', 'none');
+        polyline.setAttribute('stroke', '#000000');
+        polyline.setAttribute('stroke-width', '0.5');
+        polyline.setAttribute('stroke-linejoin', 'round');
+        polyline.setAttribute('vector-effect', 'non-scaling-stroke');
         
-        this.ctx.stroke();
+        return polyline;
     }
     
-    drawCircle(entity) {
-        if (!entity.center || !entity.radius) return;
-        if (typeof entity.center.x !== 'number' || typeof entity.center.y !== 'number') return;
-        if (typeof entity.radius !== 'number' || entity.radius <= 0) return;
-        if (isNaN(entity.center.x) || isNaN(entity.center.y) || isNaN(entity.radius)) return;
+    createSvgCircle(entity) {
+        if (!entity.center || !entity.radius) return null;
         
-        this.ctx.beginPath();
-        this.ctx.arc(entity.center.x, entity.center.y, entity.radius, 0, Math.PI * 2);
-        this.ctx.stroke();
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', entity.center.x);
+        circle.setAttribute('cy', -entity.center.y);
+        circle.setAttribute('r', entity.radius);
+        circle.setAttribute('fill', 'none');
+        circle.setAttribute('stroke', '#000000');
+        circle.setAttribute('stroke-width', '0.5');
+        circle.setAttribute('vector-effect', 'non-scaling-stroke');
+        
+        return circle;
     }
     
-    drawArc(entity) {
-        if (!entity.center || !entity.radius) return;
-        if (typeof entity.center.x !== 'number' || typeof entity.center.y !== 'number') return;
-        if (typeof entity.radius !== 'number' || entity.radius <= 0) return;
-        if (isNaN(entity.center.x) || isNaN(entity.center.y) || isNaN(entity.radius)) return;
+    createSvgArc(entity) {
+        if (!entity.center || !entity.radius) return null;
         
-        const startAngle = (entity.startAngle || 0);
-        const endAngle = (entity.endAngle || 0);
+        // Arc를 path로 변환
+        const startAngle = entity.startAngle || 0;
+        const endAngle = entity.endAngle || 0;
         
-        if (isNaN(startAngle) || isNaN(endAngle)) return;
+        const startX = entity.center.x + entity.radius * Math.cos(startAngle);
+        const startY = entity.center.y + entity.radius * Math.sin(startAngle);
+        const endX = entity.center.x + entity.radius * Math.cos(endAngle);
+        const endY = entity.center.y + entity.radius * Math.sin(endAngle);
         
-        this.ctx.beginPath();
-        this.ctx.arc(entity.center.x, entity.center.y, entity.radius, startAngle, endAngle);
-        this.ctx.stroke();
+        const largeArc = (endAngle - startAngle) > Math.PI ? 1 : 0;
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const d = `M ${startX} ${-startY} A ${entity.radius} ${entity.radius} 0 ${largeArc} 1 ${endX} ${-endY}`;
+        path.setAttribute('d', d);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', '#000000');
+        path.setAttribute('stroke-width', '0.5');
+        path.setAttribute('vector-effect', 'non-scaling-stroke');
+        
+        return path;
     }
     
-    drawPoint(entity) {
-        if (!entity.position) return;
-        if (typeof entity.position.x !== 'number' || typeof entity.position.y !== 'number') return;
+    createSvgPoint(entity) {
+        if (!entity.position) return null;
         
-        const size = 2 / this.scale; // 포인트 크기
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', entity.position.x);
+        circle.setAttribute('cy', -entity.position.y);
+        circle.setAttribute('r', '1');
+        circle.setAttribute('fill', '#000000');
+        circle.setAttribute('vector-effect', 'non-scaling-stroke');
         
-        this.ctx.save();
-        this.ctx.fillStyle = this.ctx.strokeStyle;
-        this.ctx.beginPath();
-        this.ctx.arc(entity.position.x, entity.position.y, size, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.restore();
+        return circle;
     }
     
-    drawText(entity) {
-        if (!entity.startPoint && !entity.position) return;
-        if (!entity.text) return;
-        
+    createSvgText(entity) {
+        if (!entity.text) return null;
         const pos = entity.startPoint || entity.position;
-        if (typeof pos.x !== 'number' || typeof pos.y !== 'number') return;
+        if (!pos) return null;
         
-        const height = entity.textHeight || entity.height || 10;
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', pos.x);
+        text.setAttribute('y', -pos.y);
+        text.setAttribute('fill', '#000000');
+        text.setAttribute('font-family', 'Arial');
+        text.setAttribute('font-size', entity.textHeight || entity.height || 10);
+        text.setAttribute('transform', `scale(1, -1) translate(0, ${2 * pos.y})`); // Y축 반전 보정
+        text.textContent = entity.text;
         
-        this.ctx.save();
-        
-        // 텍스트는 Y축 반전 보정 필요
-        this.ctx.scale(1, -1);
-        this.ctx.fillStyle = this.ctx.strokeStyle;
-        this.ctx.font = `${height}px Arial`;
-        this.ctx.textAlign = 'left';
-        this.ctx.textBaseline = 'bottom';
-        
-        // 회전 적용
         if (entity.rotation) {
-            this.ctx.translate(pos.x, -pos.y);
-            this.ctx.rotate(-entity.rotation);
-            this.ctx.fillText(entity.text, 0, 0);
-        } else {
-            this.ctx.fillText(entity.text, pos.x, -pos.y);
+            text.setAttribute('transform', 
+                `translate(${pos.x}, ${-pos.y}) rotate(${-entity.rotation}) scale(1, -1)`);
+            text.setAttribute('x', 0);
+            text.setAttribute('y', 0);
         }
         
-        this.ctx.restore();
+        return text;
     }
     
-    drawInsert(entity) {
-        // 블록 삽입 - 실제 블록 내용 렌더링
-        if (!entity.position) return;
-        if (typeof entity.position.x !== 'number' || typeof entity.position.y !== 'number') return;
-        if (!entity.name) return;
+    createSvgInsert(entity) {
+        if (!entity.position || !entity.name) return null;
         
-        // 블록 정의 찾기
         const block = this.dxfData.blocks && this.dxfData.blocks[entity.name];
         
         if (!block || !block.entities || block.entities.length === 0) {
-            // 블록 정의를 찾을 수 없으면 십자 표시
-            this.drawInsertFallback(entity);
-            return;
+            return this.createSvgInsertFallback(entity);
         }
         
-        this.ctx.save();
+        // 블록 그룹 생성
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         
-        // 블록 삽입점으로 이동
-        this.ctx.translate(entity.position.x, entity.position.y);
+        // 변환 적용
+        let transform = `translate(${entity.position.x}, ${-entity.position.y})`;
         
-        // 회전 적용 (degrees to radians)
         if (entity.rotation) {
-            this.ctx.rotate(entity.rotation * Math.PI / 180);
+            transform += ` rotate(${-entity.rotation})`;
         }
         
-        // 스케일 적용
         const xScale = entity.xScale || 1;
         const yScale = entity.yScale || 1;
         if (xScale !== 1 || yScale !== 1) {
-            this.ctx.scale(xScale, yScale);
+            transform += ` scale(${xScale}, ${yScale})`;
         }
         
-        // 블록의 기준점 오프셋
         if (block.position) {
-            this.ctx.translate(-block.position.x, -block.position.y);
+            transform += ` translate(${-block.position.x}, ${block.position.y})`;
         }
         
-        // 블록 내부 엔티티들 렌더링
+        group.setAttribute('transform', transform);
+        
+        // 블록 내부 엔티티 렌더링
         block.entities.forEach(blockEntity => {
-            try {
-                this.drawEntity(blockEntity);
-            } catch (error) {
-                console.warn('블록 엔티티 렌더링 오류:', error);
+            const element = this.createSvgElement(blockEntity);
+            if (element) {
+                group.appendChild(element);
             }
         });
         
-        this.ctx.restore();
+        return group;
     }
     
-    drawInsertFallback(entity) {
-        // 블록을 찾을 수 없을 때 십자 표시
-        const size = 5 / this.scale;
+    createSvgInsertFallback(entity) {
+        // 블록을 찾을 수 없을 때
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         
-        this.ctx.save();
-        this.ctx.strokeStyle = '#FF6600'; // 오렌지색 (경고)
-        this.ctx.beginPath();
-        this.ctx.moveTo(entity.position.x - size, entity.position.y);
-        this.ctx.lineTo(entity.position.x + size, entity.position.y);
-        this.ctx.moveTo(entity.position.x, entity.position.y - size);
-        this.ctx.lineTo(entity.position.x, entity.position.y + size);
-        this.ctx.stroke();
+        const size = 5;
         
-        // 블록 이름 표시
-        if (entity.name) {
-            this.ctx.scale(1, -1);
-            this.ctx.fillStyle = '#FF6600';
-            this.ctx.font = `${5 / this.scale}px Arial`;
-            this.ctx.fillText(`[${entity.name}]`, entity.position.x + size, -entity.position.y);
-        }
+        // 십자 표시
+        const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line1.setAttribute('x1', entity.position.x - size);
+        line1.setAttribute('y1', -entity.position.y);
+        line1.setAttribute('x2', entity.position.x + size);
+        line1.setAttribute('y2', -entity.position.y);
+        line1.setAttribute('stroke', '#FF6600');
+        line1.setAttribute('stroke-width', '1');
+        line1.setAttribute('vector-effect', 'non-scaling-stroke');
         
-        this.ctx.restore();
+        const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line2.setAttribute('x1', entity.position.x);
+        line2.setAttribute('y1', -entity.position.y - size);
+        line2.setAttribute('x2', entity.position.x);
+        line2.setAttribute('y2', -entity.position.y + size);
+        line2.setAttribute('stroke', '#FF6600');
+        line2.setAttribute('stroke-width', '1');
+        line2.setAttribute('vector-effect', 'non-scaling-stroke');
+        
+        group.appendChild(line1);
+        group.appendChild(line2);
+        
+        return group;
     }
     
-    drawEntity(entity) {
-        // 개별 엔티티를 그리는 범용 함수 (블록 내부 엔티티 렌더링용)
-        if (!entity || !entity.type) return;
+    createSvgSpline(entity) {
+        if (!entity.controlPoints || entity.controlPoints.length < 2) return null;
         
-        switch (entity.type) {
-            case 'LINE':
-                this.drawLine(entity);
-                break;
-            case 'POLYLINE':
-            case 'LWPOLYLINE':
-                this.drawPolyline(entity);
-                break;
-            case 'CIRCLE':
-                this.drawCircle(entity);
-                break;
-            case 'ARC':
-                this.drawArc(entity);
-                break;
-            case 'POINT':
-                this.drawPoint(entity);
-                break;
-            case 'TEXT':
-            case 'MTEXT':
-                this.drawText(entity);
-                break;
-            case 'INSERT':
-                // 재귀적 블록 삽입 (블록 안의 블록)
-                this.drawInsert(entity);
-                break;
-            case 'SPLINE':
-                this.drawSpline(entity);
-                break;
-            case 'ELLIPSE':
-                this.drawEllipse(entity);
-                break;
-            case 'SOLID':
-            case '3DFACE':
-                this.drawSolid(entity);
-                break;
-        }
+        const points = entity.controlPoints
+            .filter(cp => cp && typeof cp.x === 'number' && typeof cp.y === 'number')
+            .map(cp => `${cp.x},${-cp.y}`)
+            .join(' ');
+        
+        const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+        polyline.setAttribute('points', points);
+        polyline.setAttribute('fill', 'none');
+        polyline.setAttribute('stroke', '#000000');
+        polyline.setAttribute('stroke-width', '0.5');
+        polyline.setAttribute('vector-effect', 'non-scaling-stroke');
+        
+        return polyline;
     }
     
-    drawSpline(entity) {
-        if (!entity.controlPoints || entity.controlPoints.length < 2) return;
-        
-        this.ctx.beginPath();
-        this.ctx.moveTo(entity.controlPoints[0].x, entity.controlPoints[0].y);
-        
-        // 간단한 선형 보간 (실제 스플라인은 복잡함)
-        for (let i = 1; i < entity.controlPoints.length; i++) {
-            const cp = entity.controlPoints[i];
-            if (typeof cp.x === 'number' && typeof cp.y === 'number') {
-                this.ctx.lineTo(cp.x, cp.y);
-            }
-        }
-        
-        this.ctx.stroke();
-    }
-    
-    drawEllipse(entity) {
-        if (!entity.center || !entity.majorAxisEndPoint) return;
+    createSvgEllipse(entity) {
+        if (!entity.center || !entity.majorAxisEndPoint) return null;
         
         const cx = entity.center.x;
-        const cy = entity.center.y;
+        const cy = -entity.center.y;
         const rx = Math.sqrt(
             Math.pow(entity.majorAxisEndPoint.x, 2) + 
             Math.pow(entity.majorAxisEndPoint.y, 2)
         );
         const ry = rx * (entity.axisRatio || 1);
         
-        this.ctx.beginPath();
-        this.ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-        this.ctx.stroke();
+        const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+        ellipse.setAttribute('cx', cx);
+        ellipse.setAttribute('cy', cy);
+        ellipse.setAttribute('rx', rx);
+        ellipse.setAttribute('ry', ry);
+        ellipse.setAttribute('fill', 'none');
+        ellipse.setAttribute('stroke', '#000000');
+        ellipse.setAttribute('stroke-width', '0.5');
+        ellipse.setAttribute('vector-effect', 'non-scaling-stroke');
+        
+        return ellipse;
     }
     
-    drawSolid(entity) {
-        if (!entity.points || entity.points.length < 3) return;
+    createSvgSolid(entity) {
+        if (!entity.points || entity.points.length < 3) return null;
         
-        this.ctx.beginPath();
-        this.ctx.moveTo(entity.points[0].x, entity.points[0].y);
+        const points = entity.points
+            .filter(p => p && typeof p.x === 'number' && typeof p.y === 'number')
+            .map(p => `${p.x},${-p.y}`)
+            .join(' ');
         
-        for (let i = 1; i < entity.points.length; i++) {
-            if (entity.points[i]) {
-                this.ctx.lineTo(entity.points[i].x, entity.points[i].y);
-            }
-        }
+        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        polygon.setAttribute('points', points);
+        polygon.setAttribute('fill', '#CCCCCC');
+        polygon.setAttribute('stroke', '#000000');
+        polygon.setAttribute('stroke-width', '0.5');
+        polygon.setAttribute('vector-effect', 'non-scaling-stroke');
         
-        this.ctx.closePath();
-        this.ctx.fillStyle = this.ctx.strokeStyle;
-        this.ctx.fill();
+        return polygon;
     }
+    
+    drawPhotosCanvas() {
+        // Canvas 초기화 (투명)
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // 사진 마커 그리기
+        this.drawPhotos();
+    }
+    
+    // 기존 Canvas 렌더링 함수들은 제거됨 (SVG로 대체)
     
     drawPhotos() {
+        const rect = this.svg.getBoundingClientRect();
+        
         this.photos.forEach(photo => {
-            // 사진 썸네일 그리기
-            this.ctx.save();
+            // ViewBox 좌표 → 스크린 좌표 변환
+            const x = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
+            const y = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
+            const w = (photo.width / this.viewBox.width) * rect.width;
+            const h = (photo.height / this.viewBox.height) * rect.height;
             
-            const x = photo.x * this.scale + this.offsetX;
-            const y = this.canvas.height - (photo.y * this.scale + this.offsetY);
-            const w = photo.width * this.scale;
-            const h = photo.height * this.scale;
+            this.ctx.save();
             
             // 테두리
             this.ctx.strokeStyle = '#007AFF';
@@ -779,14 +742,15 @@ class DxfPhotoEditor {
             }
             
             // 라벨
+            const labelHeight = Math.min(25, h * 0.3); // 최대 25px 또는 높이의 30%
             this.ctx.fillStyle = 'rgba(0, 122, 255, 0.9)';
-            this.ctx.fillRect(x, y + h - 25, w, 25);
+            this.ctx.fillRect(x, y + h - labelHeight, w, labelHeight);
             
             this.ctx.fillStyle = 'white';
-            this.ctx.font = '12px -apple-system, sans-serif';
+            this.ctx.font = `${Math.min(12, labelHeight * 0.6)}px -apple-system, sans-serif`;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(photo.fileName, x + w / 2, y + h - 12.5);
+            this.ctx.fillText(photo.fileName, x + w / 2, y + h - labelHeight / 2);
             
             this.ctx.restore();
         });
@@ -802,17 +766,18 @@ class DxfPhotoEditor {
             const imageData = await this.readFileAsDataURL(file);
             const image = await this.loadImage(imageData);
             
-            // 캔버스 중앙에 배치
-            const canvasCenterX = (this.canvas.width / 2 - this.offsetX) / this.scale;
-            const canvasCenterY = (this.canvas.height / 2 - this.offsetY) / this.scale;
+            // ViewBox 중앙에 배치
+            const viewCenterX = this.viewBox.x + this.viewBox.width / 2;
+            const viewCenterY = this.viewBox.y + this.viewBox.height / 2;
             
-            const photoWidth = 100; // DXF 단위
+            // 사진 크기를 ViewBox 크기의 10%로 설정
+            const photoWidth = this.viewBox.width * 0.1;
             const photoHeight = (image.height / image.width) * photoWidth;
             
             const photo = {
                 id: Date.now(),
-                x: canvasCenterX - photoWidth / 2,
-                y: canvasCenterY - photoHeight / 2,
+                x: viewCenterX - photoWidth / 2,
+                y: viewCenterY - photoHeight / 2,
                 width: photoWidth,
                 height: photoHeight,
                 imageData: imageData,
@@ -853,15 +818,25 @@ class DxfPhotoEditor {
     
     onMouseDown(e) {
         this.isDragging = true;
-        this.dragStartX = e.clientX - this.offsetX;
-        this.dragStartY = e.clientY - this.offsetY;
+        this.dragStartX = e.clientX;
+        this.dragStartY = e.clientY;
+        this.dragStartViewBox = {...this.viewBox};
     }
     
     onMouseMove(e) {
         if (!this.isDragging) return;
         
-        this.offsetX = e.clientX - this.dragStartX;
-        this.offsetY = e.clientY - this.dragStartY;
+        const rect = this.svg.getBoundingClientRect();
+        const dx = (e.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
+        const dy = (e.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
+        
+        this.viewBox = {
+            x: this.dragStartViewBox.x - dx,
+            y: this.dragStartViewBox.y - dy,
+            width: this.viewBox.width,
+            height: this.viewBox.height
+        };
+        
         this.redraw();
     }
     
@@ -874,8 +849,9 @@ class DxfPhotoEditor {
             e.preventDefault();
             const touch = e.touches[0];
             this.isDragging = true;
-            this.dragStartX = touch.clientX - this.offsetX;
-            this.dragStartY = touch.clientY - this.offsetY;
+            this.dragStartX = touch.clientX;
+            this.dragStartY = touch.clientY;
+            this.dragStartViewBox = {...this.viewBox};
         }
     }
     
@@ -883,8 +859,18 @@ class DxfPhotoEditor {
         if (e.touches.length === 1 && this.isDragging) {
             e.preventDefault();
             const touch = e.touches[0];
-            this.offsetX = touch.clientX - this.dragStartX;
-            this.offsetY = touch.clientY - this.dragStartY;
+            
+            const rect = this.svg.getBoundingClientRect();
+            const dx = (touch.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
+            const dy = (touch.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
+            
+            this.viewBox = {
+                x: this.dragStartViewBox.x - dx,
+                y: this.dragStartViewBox.y - dy,
+                width: this.viewBox.width,
+                height: this.viewBox.height
+            };
+            
             this.redraw();
         }
     }
@@ -898,13 +884,17 @@ class DxfPhotoEditor {
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
         
-        // 사진 클릭 확인
+        const svgRect = this.svg.getBoundingClientRect();
+        
+        // 사진 클릭 확인 (ViewBox 좌표계)
         for (let i = this.photos.length - 1; i >= 0; i--) {
             const photo = this.photos[i];
-            const x = photo.x * this.scale + this.offsetX;
-            const y = this.canvas.height - (photo.y * this.scale + this.offsetY);
-            const w = photo.width * this.scale;
-            const h = photo.height * this.scale;
+            
+            // ViewBox 좌표 → 스크린 좌표 변환
+            const x = ((photo.x - this.viewBox.x) / this.viewBox.width) * svgRect.width;
+            const y = ((photo.y - this.viewBox.y) / this.viewBox.height) * svgRect.height;
+            const w = (photo.width / this.viewBox.width) * svgRect.width;
+            const h = (photo.height / this.viewBox.height) * svgRect.height;
             
             if (clickX >= x && clickX <= x + w && clickY >= y && clickY <= y + h) {
                 this.openMemoModal(photo.id);
@@ -914,12 +904,23 @@ class DxfPhotoEditor {
     }
     
     zoom(factor) {
-        const centerX = this.canvas.width / 2;
-        const centerY = this.canvas.height / 2;
+        // ViewBox 중심점 기준으로 줌
+        const centerX = this.viewBox.x + this.viewBox.width / 2;
+        const centerY = this.viewBox.y + this.viewBox.height / 2;
         
-        this.offsetX = centerX - (centerX - this.offsetX) * factor;
-        this.offsetY = centerY - (centerY - this.offsetY) * factor;
-        this.scale *= factor;
+        // 새로운 크기 계산
+        const newWidth = this.viewBox.width / factor;
+        const newHeight = this.viewBox.height / factor;
+        
+        // 중심점 유지하면서 ViewBox 조정
+        this.viewBox = {
+            x: centerX - newWidth / 2,
+            y: centerY - newHeight / 2,
+            width: newWidth,
+            height: newHeight
+        };
+        
+        console.log('🔍 Zoom:', factor, 'ViewBox:', this.viewBox);
         
         this.redraw();
     }
