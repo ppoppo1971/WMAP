@@ -394,28 +394,11 @@ class DxfPhotoEditor {
     
     /**
      * 롱프레스 이벤트 설정
+     * 
+     * ⚠️ 주의: 터치 이벤트는 setupEventListeners()의 onTouchStart/Move/End에서 통합 처리됨
+     * 이 함수는 마우스 이벤트(데스크탑 테스트)만 처리
      */
     setupLongPressEvents() {
-        // 터치 이벤트 (모바일)
-        this.svg.addEventListener('touchstart', (e) => {
-            if (e.touches.length === 1) {
-                this.startLongPress(e.touches[0].clientX, e.touches[0].clientY);
-            }
-        });
-        
-        this.svg.addEventListener('touchmove', () => {
-            this.cancelLongPress();
-        });
-        
-        this.svg.addEventListener('touchend', () => {
-            if (this.isLongPress) {
-                // 롱프레스가 완료된 경우, 드래그 방지
-                this.isLongPress = false;
-            } else {
-                this.cancelLongPress();
-            }
-        });
-        
         // 마우스 이벤트 (데스크탑 테스트용)
         this.svg.addEventListener('mousedown', (e) => {
             if (e.button === 0) { // 좌클릭만
@@ -424,7 +407,7 @@ class DxfPhotoEditor {
         });
         
         this.svg.addEventListener('mousemove', () => {
-            if (this.longPressTimer) {
+            if (this.longPressTimer && !this.isDragging) {
                 this.cancelLongPress();
             }
         });
@@ -1650,22 +1633,29 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 터치 시작 이벤트 (핀치줌 지원)
+     * 터치 시작 이벤트 (핀치줌 지원 + 롱프레스 통합)
      */
     onTouchStart(e) {
         // 기본 브라우저 동작 방지 (페이지 확대/축소 방지)
         e.preventDefault();
         
         if (e.touches.length === 1) {
-            // 단일 터치: 팬(드래그)
+            // 단일 터치: 롱프레스 시작 + 팬(드래그) 준비
             const touch = e.touches[0];
-            this.isDragging = true;
+            
+            // 롱프레스 타이머 시작
+            this.startLongPress(touch.clientX, touch.clientY);
+            
+            // 드래그 준비 (롱프레스가 취소되면 드래그 시작)
             this.dragStartX = touch.clientX;
             this.dragStartY = touch.clientY;
             this.dragStartViewBox = {...this.viewBox};
             this.isPinching = false;
+            this.isDragging = false; // 아직 드래그 시작하지 않음
+            
         } else if (e.touches.length === 2) {
-            // 두 손가락: 핀치줌
+            // 두 손가락: 핀치줌 (롱프레스 취소)
+            this.cancelLongPress();
             this.isPinching = true;
             this.isDragging = false;
             
@@ -1687,28 +1677,45 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 터치 이동 이벤트 (핀치줌 지원)
+     * 터치 이동 이벤트 (핀치줌 지원 + 롱프레스 취소)
      */
     onTouchMove(e) {
         // 항상 기본 동작 방지 (부드러운 동작)
         e.preventDefault();
         
-        if (e.touches.length === 1 && this.isDragging && !this.isPinching) {
+        if (e.touches.length === 1 && !this.isPinching) {
+            // 이동 감지: 롱프레스 취소
+            if (this.longPressTimer) {
+                const touch = e.touches[0];
+                const moveDistance = Math.sqrt(
+                    Math.pow(touch.clientX - this.dragStartX, 2) + 
+                    Math.pow(touch.clientY - this.dragStartY, 2)
+                );
+                
+                // 10px 이상 이동하면 롱프레스 취소하고 드래그 시작
+                if (moveDistance > 10) {
+                    this.cancelLongPress();
+                    this.isDragging = true;
+                }
+            }
+            
             // 단일 터치: 팬(드래그)
-            const touch = e.touches[0];
-            
-            const rect = this.svg.getBoundingClientRect();
-            const dx = (touch.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
-            const dy = (touch.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
-            
-            this.viewBox = {
-                x: this.dragStartViewBox.x - dx,
-                y: this.dragStartViewBox.y - dy,
-                width: this.viewBox.width,
-                height: this.viewBox.height
-            };
-            
-            this.redraw();
+            if (this.isDragging) {
+                const touch = e.touches[0];
+                
+                const rect = this.svg.getBoundingClientRect();
+                const dx = (touch.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
+                const dy = (touch.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
+                
+                this.viewBox = {
+                    x: this.dragStartViewBox.x - dx,
+                    y: this.dragStartViewBox.y - dy,
+                    width: this.viewBox.width,
+                    height: this.viewBox.height
+                };
+                
+                this.redraw();
+            }
         } else if (e.touches.length === 2 && this.isPinching) {
             // 두 손가락: 핀치줌
             const touch1 = e.touches[0];
@@ -1729,17 +1736,31 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 터치 종료 이벤트
+     * 터치 종료 이벤트 (롱프레스 처리 포함)
      */
     onTouchEnd(e) {
         e.preventDefault();
         
         if (e.touches.length === 0) {
+            // 모든 터치 종료
+            
+            // 롱프레스 완료 확인
+            if (this.isLongPress) {
+                // 롱프레스가 완료된 경우 (컨텍스트 메뉴 표시됨)
+                this.isLongPress = false;
+                this.isDragging = false;
+            } else {
+                // 롱프레스 타이머 취소
+                this.cancelLongPress();
+            }
+            
             this.isDragging = false;
             this.isPinching = false;
+            
         } else if (e.touches.length === 1) {
             // 두 손가락에서 한 손가락으로 전환 시
             this.isPinching = false;
+            this.cancelLongPress();
             
             // 남은 한 손가락으로 팬 재시작
             const touch = e.touches[0];

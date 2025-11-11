@@ -293,7 +293,7 @@
 
         /* 햄버거 메뉴 (우측 상단) */
         .hamburger-btn {
-            position: absolute !important;
+            position: fixed !important;
             top: 20px !important;
             right: 20px !important;
             width: 56px !important;
@@ -309,6 +309,8 @@
             align-items: center !important;
             justify-content: center !important;
             transition: background 0.15s ease-out !important;
+            z-index: 9998 !important;
+            pointer-events: auto !important;
         }
 
         .hamburger-btn:active {
@@ -380,12 +382,14 @@
 
         /* 확대/축소 버튼 (좌측 하단) */
         .zoom-controls-fixed {
-            position: absolute !important;
+            position: fixed !important;
             bottom: 20px !important;
             left: 20px !important;
             display: flex !important;
             flex-direction: column !important;
             gap: 10px !important;
+            z-index: 9998 !important;
+            pointer-events: auto !important;
         }
 
         .zoom-btn {
