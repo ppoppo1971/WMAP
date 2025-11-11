@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    
+    <!-- PWA 및 모바일 웹앱 설정 -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <title>DXF 도면 사진 삽입 앱</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f5f5f5;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: #007AFF;
+            color: white;
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .toolbar {
+            background: white;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            overflow-x: auto;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            background: #007AFF;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.2s;
+        }
+
+        .btn:active {
+            background: #0051D5;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #34C759;
+        }
+
+        .btn-secondary:active {
+            background: #248A3D;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #ffffff;
+        }
+
+        #svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            cursor: grab;
+        }
+
+        #svg:active {
+            cursor: grabbing;
+        }
+
+        /* SVG 내부 모든 요소의 선 굵기 강제 */
+        #svg line,
+        #svg polyline,
+        #svg circle,
+        #svg ellipse,
+        #svg path,
+        #svg polygon {
+            stroke-width: 0.3 !important;
+            vector-effect: non-scaling-stroke !important;
+        }
+        
+        /* 추가: 모든 SVG 요소 */
+        #svg * {
+            vector-effect: non-scaling-stroke !important;
+        }
+        
+        #svg line,
+        #svg polyline {
+            stroke-width: 0.3 !important; /* 선들은 모두 0.3 */
+        }
+        
+        #svg circle[fill="none"],
+        #svg ellipse[fill="none"],
+        #svg path[fill="none"] {
+            stroke-width: 0.3 !important; /* 채우기 없는 도형도 0.3 */
+        }
+        
+        /* POINT는 매우 작게 */
+        #svg .dxf-point {
+            r: 0.15 !important;
+            vector-effect: non-scaling-stroke !important;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: default;
+            pointer-events: auto;
+        }
+
+        .image-marker {
+            position: absolute;
+            border: 2px solid #007AFF;
+            background: rgba(0, 122, 255, 0.1);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .image-marker:hover {
+            transform: scale(1.05);
+            border-color: #0051D5;
+        }
+
+        .image-marker img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .image-marker .marker-label {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 122, 255, 0.9);
+            color: white;
+            padding: 5px;
+            font-size: 12px;
+            text-align: center;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+        }
+
+        .close-btn {
+            font-size: 28px;
+            color: #999;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            margin-top: 10px;
+            border-radius: 8px;
+        }
+
+        .info-box {
+            background: #E3F2FD;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .zoom-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .zoom-btn {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: white;
+            border: 2px solid #007AFF;
+            color: #007AFF;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .zoom-btn:active {
+            background: #007AFF;
+            color: white;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 20px 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            z-index: 2000;
+            display: none;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #007AFF;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 컨텍스트 메뉴 스타일 */
+        .context-menu {
+            display: none;
+            position: fixed;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 9999;
+            overflow: hidden;
+            min-width: 200px;
+        }
+
+        .context-menu.active {
+            display: block;
+            animation: contextMenuFadeIn 0.2s ease-out;
+        }
+
+        @keyframes contextMenuFadeIn {
+            from {
+                opacity: 0;
+                transform: scale(0.9);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .context-menu-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 16px 20px;
+            border: none;
+            background: white;
+            font-size: 16px;
+            text-align: left;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .context-menu-item:active {
+            background: #f0f0f0;
+        }
+
+        .context-menu-item + .context-menu-item {
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .menu-icon {
+            font-size: 24px;
+            width: 32px;
+            text-align: center;
+        }
+
+        .menu-text {
+            flex: 1;
+            font-weight: 500;
+            color: #333;
+        }
+
+        /* 텍스트 입력 모달 */
+        .text-input-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .text-input-modal.active {
+            display: flex;
+        }
+
+        .text-input-content {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .text-input-content h3 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+        }
+
+        .text-input-content textarea {
+            width: 100%;
+            min-height: 100px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: vertical;
+        }
+
+        .text-input-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .text-input-buttons button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .text-input-buttons .btn-cancel {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .text-input-buttons .btn-save {
+            background: #007AFF;
+            color: white;
+        }
+
+        /* 사진 보기 모달 스타일 */
+        .photo-modal-content {
+            max-width: 600px;
+        }
+
+        .photo-view-container {
+            width: 100%;
+            max-height: 60vh;
+            overflow: hidden;
+            border-radius: 8px;
+            margin: 20px 0;
+            background: #f5f5f5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .photo-view-img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .photo-memo-display {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            min-height: 50px;
+            font-size: 14px;
+            color: #333;
+            white-space: pre-wrap;
+        }
+
+        .photo-memo-display:empty::before {
+            content: '메모가 없습니다.';
+            color: #999;
+            font-style: italic;
+        }
+
+        .photo-modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .photo-modal-buttons .btn {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <h1>📐 DXF 도면 편집기</h1>
+        </div>
+
+        <div class="toolbar">
+            <!-- Google Drive 버튼 추가 -->
+            <button class="btn" id="google-drive-btn" onclick="showDrivePicker()" disabled style="background: #4285F4;">
+                📂 로그인 중...
+            </button>
+            
+            <label for="dxf-input" class="btn">💾 로컬 DXF</label>
+            <input type="file" id="dxf-input" accept=".dxf">
+            
+            <label for="photo-input" class="btn btn-secondary" id="add-photo-btn" disabled>사진 추가</label>
+            <input type="file" id="photo-input" accept="image/*" capture="environment">
+            
+            <!-- ZIP 내보내기 버튼 제거 (Google Drive 자동 저장 사용) -->
+            <button class="btn" id="fit-btn" disabled style="background: #FF9500;">전체보기</button>
+        </div>
+
+        <div class="canvas-container" id="canvas-container">
+            <svg id="svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white;"></svg>
+            <canvas id="canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+            <div class="zoom-controls">
+                <button class="zoom-btn" id="zoom-in">+</button>
+                <button class="zoom-btn" id="zoom-out">−</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 롱프레스 컨텍스트 메뉴 -->
+    <div class="context-menu" id="context-menu">
+        <button class="context-menu-item" id="camera-btn">
+            <span class="menu-icon">📷</span>
+            <span class="menu-text">사진 촬영</span>
+        </button>
+        <button class="context-menu-item" id="gallery-btn">
+            <span class="menu-icon">🖼️</span>
+            <span class="menu-text">사진 선택</span>
+        </button>
+        <button class="context-menu-item" id="text-btn">
+            <span class="menu-icon">📝</span>
+            <span class="menu-text">텍스트 입력</span>
+        </button>
+    </div>
+    
+    <!-- 숨겨진 파일 입력 (카메라 촬영용) -->
+    <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
+    
+    <!-- 숨겨진 파일 입력 (갤러리 선택용) -->
+    <input type="file" id="gallery-input" accept="image/*" style="display: none;">
+
+    <!-- 사진 보기 모달 -->
+    <div class="modal" id="photo-view-modal">
+        <div class="modal-content photo-modal-content">
+            <div class="modal-header">
+                <h2>📷 사진</h2>
+                <span class="close-btn" id="close-photo-view">&times;</span>
+            </div>
+            <div class="photo-view-container">
+                <img id="photo-view-image" class="photo-view-img">
+            </div>
+            <div class="photo-memo-display" id="photo-memo-display"></div>
+            <div class="photo-modal-buttons">
+                <button class="btn" id="edit-photo-memo-btn" style="background: #34C759;">메모 편집</button>
+                <button class="btn" id="delete-photo-btn" style="background: #FF3B30;">사진 삭제</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 메모 편집 모달 -->
+    <div class="modal" id="memo-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📝 사진 메모 편집</h2>
+                <span class="close-btn" id="close-memo">&times;</span>
+            </div>
+            <div class="form-group">
+                <label>사진 미리보기</label>
+                <img id="memo-image-preview" class="image-preview">
+            </div>
+            <div class="form-group">
+                <label>메모</label>
+                <textarea id="memo-text" placeholder="이 사진에 대한 메모를 입력하세요..."></textarea>
+            </div>
+            <button class="btn" id="save-memo">저장</button>
+        </div>
+    </div>
+
+    <!-- 텍스트 입력 모달 -->
+    <div class="text-input-modal" id="text-input-modal">
+        <div class="text-input-content">
+            <h3>📝 텍스트 입력</h3>
+            <textarea id="text-input-field" placeholder="입력할 텍스트를 입력하세요..."></textarea>
+            <div class="text-input-buttons">
+                <button class="btn-cancel" id="text-cancel-btn">취소</button>
+                <button class="btn-save" id="text-save-btn">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div>처리 중...</div>
+    </div>
+
+    <!-- 외부 라이브러리 (로컬 파일 우선) -->
+    <script>
+        console.log('📦 라이브러리 로드 시작...');
+        
+        // 로컬 파일 우선, CDN은 폴백
+        const libraries = [
+            {
+                name: 'DxfParser',
+                urls: [
+                    'libs/dxf-parser.min.js',  // 로컬 파일 (우선)
+                    'https://unpkg.com/dxf-parser@1.2.1/dist/dxf-parser.min.js',
+                    'https://cdn.jsdelivr.net/npm/dxf-parser@1.2.1/dist/dxf-parser.min.js'
+                ],
+                check: () => typeof DxfParser !== 'undefined' || typeof window.DxfParser !== 'undefined'
+            }
+            // JSZip 제거: Google Drive 자동 저장 사용으로 불필요
+        ];
+        
+        function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = () => resolve(url);
+                script.onerror = () => reject(url);
+                document.head.appendChild(script);
+            });
+        }
+        
+        async function loadLibrary(lib) {
+            console.log(`\n📦 ${lib.name} 로드 시도...`);
+            
+            for (const url of lib.urls) {
+                try {
+                    console.log(`   시도: ${url}`);
+                    await loadScript(url);
+                    
+                    // 짧은 대기 후 확인
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    if (lib.check()) {
+                        console.log(`   ✅ ${lib.name} 로드 성공!`);
+                        return true;
+                    }
+                } catch (error) {
+                    console.warn(`   ⚠️ 실패: ${url}`);
+                }
+            }
+            
+            console.error(`   ❌ ${lib.name} 로드 완전 실패!`);
+            return false;
+        }
+        
+        // 순차적으로 로드
+        async function loadAllLibraries() {
+            let allSuccess = true;
+            
+            for (const lib of libraries) {
+                const success = await loadLibrary(lib);
+                allSuccess = allSuccess && success;
+            }
+            
+            if (!allSuccess) {
+                alert('⚠️ 라이브러리 로드 실패\n\n해결 방법:\n\n1. npm install 실행\n2. npm run copy-libs 실행\n3. libs 폴더를 GitHub에 커밋\n\n또는:\n\n인터넷 연결을 확인하고\n페이지를 새로고침하세요.');
+            } else {
+                console.log('\n✅ 모든 라이브러리 로드 완료!\n');
+            }
+        }
+        
+        // 로드 시작
+        loadAllLibraries();
+    </script>
+    
+    <!-- Google API 스크립트 -->
+    <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+    <script src="https://apis.google.com/js/api.js?onload=onApiLoad"></script>
+    
+    <!-- Google Drive 모듈 -->
+    <script src="google-drive.js"></script>
+    
+    <!-- 앱 스크립트 (defer로 라이브러리 로드 후 실행) -->
+    <script src="app.js" defer></script>
+</body>
+</html>
+
