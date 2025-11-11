@@ -269,7 +269,7 @@ header h1 {
     height: calc(100vh - 56px); /* 헤더 높이 제외 */
     position: relative;
     overflow: hidden;
-    background: #1a1a1a;
+    background: #ffffff; /* 흰색 배경 (SVG와 동일) */
 }
 
 #viewerCanvas {

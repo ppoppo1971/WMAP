@@ -132,7 +132,11 @@
     <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
     <input type="file" id="galleryInput" accept="image/*" style="display:none">
 
-    <!-- Google Identity Services만 필요 -->
+    <!-- 필수 라이브러리 -->
+    <!-- DXF Parser (unpkg - 안정적) -->
+    <script src="https://unpkg.com/dxf-parser@1.2.1/dist/dxf-parser.min.js"></script>
+    
+    <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     
     <!-- SVG 버전 앱 스크립트 -->
