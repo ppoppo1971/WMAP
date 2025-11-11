@@ -56,6 +56,9 @@ class DxfPhotoEditor {
         this.lastPinchDistance = 0;
         this.pinchCenter = { x: 0, y: 0 };
         
+        // 렌더링 최적화
+        this.redrawPending = false;
+        
         this.init();
     }
     
@@ -293,10 +296,10 @@ class DxfPhotoEditor {
         this.svg.addEventListener('mousemove', this.onMouseMove.bind(this));
         this.svg.addEventListener('mouseup', this.onMouseUp.bind(this));
         
-        // 터치 이벤트 (모바일) - SVG에서
-        this.svg.addEventListener('touchstart', this.onTouchStart.bind(this));
-        this.svg.addEventListener('touchmove', this.onTouchMove.bind(this));
-        this.svg.addEventListener('touchend', this.onTouchEnd.bind(this));
+        // 터치 이벤트 (모바일) - SVG에서 (passive: false로 preventDefault 가능)
+        this.svg.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
+        this.svg.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
+        this.svg.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
         
         // 사진 클릭 - Canvas에서
         this.canvas.addEventListener('click', this.onCanvasClick.bind(this));
@@ -1097,23 +1100,26 @@ class DxfPhotoEditor {
     }
     
     redraw() {
-        console.log('🎨 redraw() 호출됨');
+        // requestAnimationFrame으로 부드러운 렌더링
+        if (this.redrawPending) return;
         
-        if (!this.dxfData) {
-            this.drawWelcomeScreen();
-            this.clearCanvas();
-            return;
-        }
+        this.redrawPending = true;
         
-        console.log('📐 ViewBox:', this.viewBox);
-        
-        // 1. SVG로 DXF 렌더링 (벡터)
-        this.drawDxfSvg();
-        
-        // 2. Canvas로 사진 렌더링 (래스터)
-        this.drawPhotosCanvas();
-        
-        console.log('✅ redraw() 완료');
+        requestAnimationFrame(() => {
+            this.redrawPending = false;
+            
+            if (!this.dxfData) {
+                this.drawWelcomeScreen();
+                this.clearCanvas();
+                return;
+            }
+            
+            // 1. SVG로 DXF 렌더링 (벡터)
+            this.drawDxfSvg();
+            
+            // 2. Canvas로 사진 렌더링 (래스터)
+            this.drawPhotosCanvas();
+        });
     }
     
     clearCanvas() {
@@ -1647,6 +1653,9 @@ class DxfPhotoEditor {
      * 터치 시작 이벤트 (핀치줌 지원)
      */
     onTouchStart(e) {
+        // 기본 브라우저 동작 방지 (페이지 확대/축소 방지)
+        e.preventDefault();
+        
         if (e.touches.length === 1) {
             // 단일 터치: 팬(드래그)
             const touch = e.touches[0];
@@ -1657,7 +1666,6 @@ class DxfPhotoEditor {
             this.isPinching = false;
         } else if (e.touches.length === 2) {
             // 두 손가락: 핀치줌
-            e.preventDefault();
             this.isPinching = true;
             this.isDragging = false;
             
@@ -1682,9 +1690,11 @@ class DxfPhotoEditor {
      * 터치 이동 이벤트 (핀치줌 지원)
      */
     onTouchMove(e) {
+        // 항상 기본 동작 방지 (부드러운 동작)
+        e.preventDefault();
+        
         if (e.touches.length === 1 && this.isDragging && !this.isPinching) {
             // 단일 터치: 팬(드래그)
-            e.preventDefault();
             const touch = e.touches[0];
             
             const rect = this.svg.getBoundingClientRect();
@@ -1701,15 +1711,13 @@ class DxfPhotoEditor {
             this.redraw();
         } else if (e.touches.length === 2 && this.isPinching) {
             // 두 손가락: 핀치줌
-            e.preventDefault();
-            
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
             
             // 현재 거리
             const currentDistance = this.getTouchDistance(touch1, touch2);
             
-            // 줌 비율 계산
+            // 줌 비율 계산 (부드럽게)
             const zoomFactor = this.lastPinchDistance / currentDistance;
             
             // 핀치 중심점 기준으로 줌
@@ -1724,6 +1732,8 @@ class DxfPhotoEditor {
      * 터치 종료 이벤트
      */
     onTouchEnd(e) {
+        e.preventDefault();
+        
         if (e.touches.length === 0) {
             this.isDragging = false;
             this.isPinching = false;
@@ -1750,19 +1760,24 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 특정 점을 중심으로 줌
+     * 특정 점을 중심으로 줌 (개선된 버전)
      */
     zoomAt(centerX, centerY, factor) {
+        if (!this.originalViewBox) {
+            console.warn('originalViewBox가 없습니다');
+            return;
+        }
+        
         // 새로운 크기 계산
         let newWidth = this.viewBox.width * factor;
         let newHeight = this.viewBox.height * factor;
         
-        // 최소/최대 크기 제한
-        const minSize = 0.001;
-        const maxSize = 1000000;
+        // 최소/최대 크기 제한 (원본 크기 기준)
+        const minWidth = this.originalViewBox.width * 0.01; // 최대 100배 확대
+        const maxWidth = this.originalViewBox.width * 10;   // 최대 10배 축소
         
-        newWidth = Math.max(minSize, Math.min(maxSize, newWidth));
-        newHeight = Math.max(minSize, Math.min(maxSize, newHeight));
+        newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+        newHeight = Math.max(minWidth, Math.min(maxWidth, newHeight));
         
         // 중심점 유지하면서 ViewBox 조정
         const centerRatioX = (centerX - this.viewBox.x) / this.viewBox.width;
@@ -1840,33 +1855,15 @@ class DxfPhotoEditor {
         document.getElementById('photo-view-modal').classList.remove('active');
     }
     
+    /**
+     * 줌 (부드러운 애니메이션)
+     */
     zoom(factor) {
         // ViewBox 중심점 기준으로 줌
         const centerX = this.viewBox.x + this.viewBox.width / 2;
         const centerY = this.viewBox.y + this.viewBox.height / 2;
         
-        // 새로운 크기 계산
-        let newWidth = this.viewBox.width / factor;
-        let newHeight = this.viewBox.height / factor;
-        
-        // 최소/최대 크기 제한 (매우 넓은 범위로 설정)
-        const minSize = 0.001; // 최대 1000배 확대
-        const maxSize = 1000000; // 최대 축소
-        
-        newWidth = Math.max(minSize, Math.min(maxSize, newWidth));
-        newHeight = Math.max(minSize, Math.min(maxSize, newHeight));
-        
-        // 중심점 유지하면서 ViewBox 조정
-        this.viewBox = {
-            x: centerX - newWidth / 2,
-            y: centerY - newHeight / 2,
-            width: newWidth,
-            height: newHeight
-        };
-        
-        console.log('🔍 Zoom:', factor, 'ViewBox width:', this.viewBox.width.toFixed(2), '(확대율:', (1 / (this.viewBox.width / this.originalViewBox?.width || 1)).toFixed(2) + 'x)');
-        
-        this.redraw();
+        this.zoomAt(centerX, centerY, 1 / factor);
     }
     
     openMemoModal(photoId) {
