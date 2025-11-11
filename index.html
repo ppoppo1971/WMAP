@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>DXF 도면 뷰어1140</title>
+    <title>DXF 도면 뷰어1201</title>
+    
+    <!-- Google API 스크립트 먼저 로드 -->
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+    
     <style>
         * {
             margin: 0;
@@ -469,8 +473,6 @@
                 gapi.load('client:auth2', async () => {
                     try {
                         console.log('Google API 초기화 중...');
-                        console.log('Client ID:', CLIENT_ID);
-                        console.log('API Key:', API_KEY);
                         
                         await gapi.client.init({
                             apiKey: API_KEY,
@@ -481,9 +483,15 @@
                         
                         console.log('Google API 초기화 완료');
                         
-                        // Drive API 활성화 확인
                         const authInstance = gapi.auth2.getAuthInstance();
                         console.log('Auth Instance 생성됨:', authInstance ? '성공' : '실패');
+                        
+                        // 페이지 로드 시 자동 로그인 확인
+                        if (authInstance.isSignedIn.get()) {
+                            const user = authInstance.currentUser.get();
+                            accessToken = user.getAuthResponse().access_token;
+                            console.log('이미 로그인됨');
+                        }
                         
                         resolve();
                     } catch (error) {
@@ -498,21 +506,45 @@
             try {
                 console.log('로그인 시도 중...');
                 const authInstance = gapi.auth2.getAuthInstance();
-                console.log('Auth Instance:', authInstance);
                 
-                const user = await authInstance.signIn();
-                console.log('로그인 성공:', user);
+                // 모바일 최적화: grantOfflineAccess 사용 (더 안정적)
+                try {
+                    const response = await authInstance.grantOfflineAccess({
+                        prompt: 'consent'
+                    });
+                    console.log('Offline access granted:', response);
+                    
+                    // 토큰 재취득
+                    const user = authInstance.currentUser.get();
+                    accessToken = user.getAuthResponse().access_token;
+                    
+                    if (accessToken) {
+                        console.log('로그인 성공!');
+                        return true;
+                    }
+                } catch (offlineError) {
+                    console.log('grantOfflineAccess 실패, signIn 시도...');
+                    
+                    // 일반 signIn으로 폴백
+                    const user = await authInstance.signIn({
+                        prompt: 'select_account'
+                    });
+                    
+                    accessToken = user.getAuthResponse().access_token;
+                    console.log('로그인 성공:', user.getBasicProfile().getEmail());
+                    return true;
+                }
                 
-                accessToken = user.getAuthResponse().access_token;
-                console.log('Access Token 획득:', accessToken ? '성공' : '실패');
-                
-                return true;
             } catch (error) {
-                console.error('로그인 실패 상세:', error);
-                console.error('에러 코드:', error.error);
-                console.error('에러 상세:', error.details);
+                console.error('로그인 실패:', error);
                 
-                alert(`구글 로그인에 실패했습니다.\n\n에러: ${error.error || error.message || '알 수 없는 오류'}\n\n브라우저 콘솔(F12)에서 상세 내용을 확인하세요.`);
+                if (error.error === 'popup_closed_by_user') {
+                    alert('로그인이 취소되었습니다.\n\n모바일에서는:\n1. 팝업 차단을 해제해주세요\n2. Safari 설정 > 팝업 차단 해제\n3. Chrome 설정 > 사이트 설정 > 팝업 허용');
+                } else if (error.error === 'popup_blocked_by_browser') {
+                    alert('팝업이 차단되었습니다.\n브라우저 설정에서 팝업을 허용해주세요.');
+                } else {
+                    alert(`로그인 실패: ${error.error || error.message}`);
+                }
                 return false;
             }
         }
@@ -1102,12 +1134,26 @@
         // ========================================
         
         async function openFile() {
+            // Google API 로드 확인
+            if (!window.gapi) {
+                alert('Google API가 아직 로드되지 않았습니다.\n잠시 후 다시 시도해주세요.');
+                console.error('gapi is not loaded');
+                
+                // 재시도
+                try {
+                    await loadGoogleAPI();
+                } catch (error) {
+                    alert('Google API 로드에 실패했습니다.\n페이지를 새로고침해주세요.');
+                    return;
+                }
+            }
+            
             // 로그인 확인
             try {
                 const authInstance = gapi.auth2.getAuthInstance();
                 
                 if (!authInstance) {
-                    alert('Google API가 초기화되지 않았습니다.\n페이지를 새로고침해주세요.');
+                    alert('Google 인증이 초기화되지 않았습니다.\n페이지를 새로고침해주세요.');
                     console.error('authInstance is null');
                     return;
                 }
@@ -1251,25 +1297,32 @@
         async function init() {
             console.log('앱 초기화 시작...');
             
-            // Three.js 초기화
-            initThreeJS();
-            
-            // 터치 컨트롤 설정
-            setupTouchControls();
-            
-            // 버튼 리스너 설정
-            setupButtonListeners();
-            
-            // 사진 입력 설정
-            setupPhotoInput();
-            
-            // 텍스트 모달 설정
-            setupTextModal();
-            
-            // Google API 초기화
-            await loadGoogleAPI();
-            
-            console.log('앱 초기화 완료');
+            try {
+                // Three.js 초기화
+                initThreeJS();
+                
+                // 터치 컨트롤 설정
+                setupTouchControls();
+                
+                // 버튼 리스너 설정
+                setupButtonListeners();
+                
+                // 사진 입력 설정
+                setupPhotoInput();
+                
+                // 텍스트 모달 설정
+                setupTextModal();
+                
+                // Google API 초기화
+                console.log('Google API 로드 대기 중...');
+                await loadGoogleAPI();
+                
+                console.log('앱 초기화 완료 ✓');
+                
+            } catch (error) {
+                console.error('앱 초기화 실패:', error);
+                alert(`초기화 중 오류가 발생했습니다.\n\n${error.message}\n\n페이지를 새로고침해주세요.`);
+            }
         }
 
         // ========================================
@@ -1278,36 +1331,36 @@
         
         function loadGoogleAPI() {
             return new Promise((resolve, reject) => {
-                // 이미 로드되어 있는지 확인
-                if (window.gapi) {
-                    console.log('Google API 이미 로드됨');
-                    initGoogleAPI().then(resolve).catch(reject);
-                    return;
-                }
+                // gapi가 로드될 때까지 대기 (최대 30초로 증가)
+                let attempts = 0;
+                const maxAttempts = 150; // 30초 = 150 * 200ms
                 
-                console.log('Google API 스크립트 로드 중...');
-                const script = document.createElement('script');
-                script.src = 'https://apis.google.com/js/api.js';
-                script.async = true;
-                script.defer = true;
+                console.log('Google API 로드 체크 시작...');
+                console.log('window.gapi 상태:', typeof window.gapi);
                 
-                script.onload = async () => {
-                    console.log('Google API 스크립트 로드 완료');
-                    try {
-                        await initGoogleAPI();
-                        resolve();
-                    } catch (error) {
-                        console.error('Google API 초기화 중 오류:', error);
-                        reject(error);
+                const checkGapi = setInterval(() => {
+                    attempts++;
+                    
+                    if (window.gapi) {
+                        clearInterval(checkGapi);
+                        console.log('✓ Google API 감지됨! 초기화 시작...');
+                        initGoogleAPI()
+                            .then(resolve)
+                            .catch(reject);
+                    } else if (attempts >= maxAttempts) {
+                        clearInterval(checkGapi);
+                        console.error('✗ Google API 로드 타임아웃 (30초 경과)');
+                        console.error('window.gapi:', window.gapi);
+                        console.error('document.readyState:', document.readyState);
+                        
+                        reject(new Error('Google API를 로드할 수 없습니다.\n\n가능한 원인:\n1. 인터넷 연결 불안정\n2. 방화벽/광고차단기\n3. Google 서비스 차단\n\n페이지를 새로고침하거나 다른 브라우저를 시도해보세요.'));
+                    } else {
+                        // 매 1초마다만 로그 출력 (5번째 시도마다)
+                        if (attempts % 5 === 0) {
+                            console.log(`Google API 로드 대기 중... ${attempts * 0.2}초 경과`);
+                        }
                     }
-                };
-                
-                script.onerror = (error) => {
-                    console.error('Google API 스크립트 로드 실패:', error);
-                    reject(new Error('Google API 스크립트를 불러올 수 없습니다.'));
-                };
-                
-                document.head.appendChild(script);
+                }, 200); // 200ms마다 체크
             });
         }
 
