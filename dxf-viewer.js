@@ -88,14 +88,21 @@ class DxfViewer {
                 this.scene.remove(this.dxfGroup);
             }
 
-            // three-dxf 파서 사용
-            const parser = new window.ThreeDxf.Parser();
+            // dxf-parser 라이브러리 확인
+            if (!window.DxfParser) {
+                throw new Error('DXF 파서 라이브러리가 로드되지 않았습니다.');
+            }
+
+            // DXF 파싱
+            const parser = new window.DxfParser();
             this.dxfData = parser.parseSync(dxfString);
+
+            console.log('DXF 파싱 완료:', this.dxfData);
 
             // DXF를 Three.js 객체로 변환
             this.dxfGroup = new THREE.Group();
             
-            // 모든 레이어 추가
+            // 엔티티 렌더링
             if (this.dxfData && this.dxfData.entities) {
                 this.dxfData.entities.forEach(entity => {
                     const mesh = this.createEntityMesh(entity);
@@ -110,7 +117,7 @@ class DxfViewer {
             // 전체 보기로 조정
             this.fitToView();
 
-            console.log('DXF 로드 완료:', this.dxfData);
+            console.log('DXF 로드 완료, 엔티티 수:', this.dxfGroup.children.length);
         } catch (error) {
             console.error('DXF 로드 실패:', error);
             throw error;
@@ -121,28 +128,157 @@ class DxfViewer {
      * DXF 엔티티를 Three.js Mesh로 변환
      */
     createEntityMesh(entity) {
-        // three-dxf가 자동으로 변환한 객체 사용
-        if (entity.vertices && entity.vertices.length > 0) {
-            // 폴리라인
-            const geometry = new THREE.BufferGeometry();
-            const positions = [];
-            
-            entity.vertices.forEach(vertex => {
-                positions.push(vertex.x, vertex.y, vertex.z || 0);
-            });
-            
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            
-            const material = new THREE.LineBasicMaterial({ 
-                color: entity.color || 0xffffff,
-                linewidth: 1 
-            });
-            
-            return new THREE.Line(geometry, material);
+        try {
+            switch (entity.type) {
+                case 'LINE':
+                    return this.createLine(entity);
+                case 'LWPOLYLINE':
+                case 'POLYLINE':
+                    return this.createPolyline(entity);
+                case 'CIRCLE':
+                    return this.createCircle(entity);
+                case 'ARC':
+                    return this.createArc(entity);
+                case 'SPLINE':
+                    return this.createSpline(entity);
+                default:
+                    console.warn('지원하지 않는 엔티티 타입:', entity.type);
+                    return null;
+            }
+        } catch (error) {
+            console.error('엔티티 생성 실패:', entity.type, error);
+            return null;
         }
+    }
+
+    /**
+     * 선 생성
+     */
+    createLine(entity) {
+        const geometry = new THREE.BufferGeometry();
+        const positions = [
+            entity.vertices[0].x, entity.vertices[0].y, entity.vertices[0].z || 0,
+            entity.vertices[1].x, entity.vertices[1].y, entity.vertices[1].z || 0
+        ];
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         
-        // 다른 엔티티 타입도 처리 가능 (원, 호, 텍스트 등)
-        return null;
+        const material = new THREE.LineBasicMaterial({
+            color: this.getColor(entity.color),
+            linewidth: 1
+        });
+        
+        return new THREE.Line(geometry, material);
+    }
+
+    /**
+     * 폴리라인 생성
+     */
+    createPolyline(entity) {
+        if (!entity.vertices || entity.vertices.length < 2) {
+            return null;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = [];
+        
+        entity.vertices.forEach(vertex => {
+            positions.push(vertex.x, vertex.y, vertex.z || 0);
+        });
+        
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        
+        const material = new THREE.LineBasicMaterial({
+            color: this.getColor(entity.color),
+            linewidth: 1
+        });
+        
+        return new THREE.Line(geometry, material);
+    }
+
+    /**
+     * 원 생성
+     */
+    createCircle(entity) {
+        const geometry = new THREE.CircleGeometry(entity.radius, 32);
+        const edges = new THREE.EdgesGeometry(geometry);
+        
+        const material = new THREE.LineBasicMaterial({
+            color: this.getColor(entity.color),
+            linewidth: 1
+        });
+        
+        const circle = new THREE.LineSegments(edges, material);
+        circle.position.set(entity.center.x, entity.center.y, entity.center.z || 0);
+        
+        return circle;
+    }
+
+    /**
+     * 호 생성
+     */
+    createArc(entity) {
+        const curve = new THREE.EllipseCurve(
+            entity.center.x, entity.center.y,
+            entity.radius, entity.radius,
+            entity.startAngle * Math.PI / 180,
+            entity.endAngle * Math.PI / 180,
+            false,
+            0
+        );
+
+        const points = curve.getPoints(50);
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        
+        const material = new THREE.LineBasicMaterial({
+            color: this.getColor(entity.color),
+            linewidth: 1
+        });
+        
+        return new THREE.Line(geometry, material);
+    }
+
+    /**
+     * 스플라인 생성
+     */
+    createSpline(entity) {
+        if (!entity.controlPoints || entity.controlPoints.length < 2) {
+            return null;
+        }
+
+        const points = entity.controlPoints.map(p => 
+            new THREE.Vector3(p.x, p.y, p.z || 0)
+        );
+        
+        const curve = new THREE.CatmullRomCurve3(points);
+        const curvePoints = curve.getPoints(50);
+        const geometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
+        
+        const material = new THREE.LineBasicMaterial({
+            color: this.getColor(entity.color),
+            linewidth: 1
+        });
+        
+        return new THREE.Line(geometry, material);
+    }
+
+    /**
+     * AutoCAD 색상 코드를 Three.js 색상으로 변환
+     */
+    getColor(colorCode) {
+        // AutoCAD 색상 인덱스를 RGB로 변환 (간단한 매핑)
+        const colorMap = {
+            0: 0xffffff, // ByBlock (흰색)
+            1: 0xff0000, // 빨강
+            2: 0xffff00, // 노랑
+            3: 0x00ff00, // 초록
+            4: 0x00ffff, // 시안
+            5: 0x0000ff, // 파랑
+            6: 0xff00ff, // 마젠타
+            7: 0xffffff, // 흰색
+            256: 0xffffff, // ByLayer (흰색)
+        };
+
+        return colorMap[colorCode] || 0xffffff;
     }
 
     /**

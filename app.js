@@ -33,6 +33,9 @@ class DmapApp {
         try {
             console.log('앱 초기화 중...');
 
+            // 필수 라이브러리 로딩 대기
+            await this.waitForLibraries();
+
             // Google Drive API 초기화
             await this.driveManager.initialize();
 
@@ -50,6 +53,32 @@ class DmapApp {
             console.error('초기화 실패:', error);
             alert('앱 초기화에 실패했습니다: ' + error.message);
         }
+    }
+
+    /**
+     * 필수 라이브러리 로딩 대기
+     */
+    async waitForLibraries() {
+        const maxWait = 10000; // 최대 10초 대기
+        const startTime = Date.now();
+
+        return new Promise((resolve, reject) => {
+            const checkLibraries = setInterval(() => {
+                // Three.js와 DxfParser 확인
+                if (window.THREE && window.DxfParser) {
+                    clearInterval(checkLibraries);
+                    console.log('라이브러리 로딩 완료');
+                    resolve();
+                    return;
+                }
+
+                // 타임아웃 체크
+                if (Date.now() - startTime > maxWait) {
+                    clearInterval(checkLibraries);
+                    reject(new Error('라이브러리 로딩 시간 초과'));
+                }
+            }, 100);
+        });
     }
 
     /**
