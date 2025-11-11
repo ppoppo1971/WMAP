@@ -5,10 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>DXF 도면 뷰어1201</title>
+    <title>DXF 도면 뷰어</title>
     
-    <!-- Google API 스크립트 먼저 로드 -->
-    <script src="https://apis.google.com/js/api.js" async defer></script>
     
     <style>
         * {
@@ -332,7 +330,7 @@
     <!-- 파일 선택 모달 -->
     <div class="modal-backdrop" id="fileModal">
         <div class="modal">
-            <h3>구글 드라이브에서 선택</h3>
+            <h3>DXF 파일 선택</h3>
             <div class="file-list" id="fileList"></div>
             <div class="modal-buttons" style="margin-top: 15px;">
                 <button class="modal-btn cancel" id="closeFileModal">취소</button>
@@ -370,17 +368,21 @@
         // 전역 변수 및 초기화
         // ========================================
         
-        const CLIENT_ID = '906332453523-or8l93395kamm6sipv4hogn93i2clj3k.apps.googleusercontent.com';
-        const API_KEY = 'AIzaSyAMBSJ39taPtfZgkIocKzIx3rutrCcaMaI';
-        const FOLDER_ID = '18NRsrVaR2OUiU4mf5zMseoFM-fij0FWX';
-        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+        // DXF 파일 목록 설정 (GitHub raw URL 사용)
+        const DXF_FILES = [
+            { 
+                name: 'test02.dxf', 
+                path: 'https://raw.githubusercontent.com/ppoppo1971/DMAP/main/test02.dxf' 
+            }
+            // 추가 파일이 있으면 여기에 추가하세요
+            // { name: '파일명.dxf', path: 'https://raw.githubusercontent.com/사용자명/저장소명/main/파일명.dxf' }
+        ];
 
         let scene, camera, renderer, controls;
         let dxfData = null; // DXF 데이터 저장
-        let currentFileId = null; // 현재 열린 파일 ID
+        let currentFilePath = null; // 현재 열린 파일 경로
         let currentFileName = null; // 현재 파일 이름
         let annotations = []; // 주석 배열 (사진, 텍스트)
-        let accessToken = null; // 구글 액세스 토큰
         
         // 터치 관련 변수
         let isDragging = false;
@@ -464,122 +466,32 @@
         }
 
         // ========================================
-        // 구글 OAuth 인증
+        // DXF 파일 목록 가져오기
         // ========================================
         
-        async function initGoogleAPI() {
-            return new Promise((resolve, reject) => {
-                console.log('Google API 로드 시작...');
-                gapi.load('client:auth2', async () => {
-                    try {
-                        console.log('Google API 초기화 중...');
-                        
-                        await gapi.client.init({
-                            apiKey: API_KEY,
-                            clientId: CLIENT_ID,
-                            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-                            scope: SCOPES
-                        });
-                        
-                        console.log('Google API 초기화 완료');
-                        
-                        const authInstance = gapi.auth2.getAuthInstance();
-                        console.log('Auth Instance 생성됨:', authInstance ? '성공' : '실패');
-                        
-                        // 페이지 로드 시 자동 로그인 확인
-                        if (authInstance.isSignedIn.get()) {
-                            const user = authInstance.currentUser.get();
-                            accessToken = user.getAuthResponse().access_token;
-                            console.log('이미 로그인됨');
-                        }
-                        
-                        resolve();
-                    } catch (error) {
-                        console.error('Google API 초기화 실패:', error);
-                        reject(error);
-                    }
-                });
-            });
+        function listDXFFiles() {
+            // DXF_FILES 배열에서 파일 목록 반환
+            return DXF_FILES;
         }
 
-        async function signIn() {
+        // ========================================
+        // DXF 파일 다운로드 (fetch 사용)
+        // ========================================
+        
+        async function downloadDXFFile(filePath) {
             try {
-                console.log('로그인 시도 중...');
-                const authInstance = gapi.auth2.getAuthInstance();
+                console.log('DXF 파일 로드 중:', filePath);
                 
-                // 모바일 최적화: grantOfflineAccess 사용 (더 안정적)
-                try {
-                    const response = await authInstance.grantOfflineAccess({
-                        prompt: 'consent'
-                    });
-                    console.log('Offline access granted:', response);
-                    
-                    // 토큰 재취득
-                    const user = authInstance.currentUser.get();
-                    accessToken = user.getAuthResponse().access_token;
-                    
-                    if (accessToken) {
-                        console.log('로그인 성공!');
-                        return true;
-                    }
-                } catch (offlineError) {
-                    console.log('grantOfflineAccess 실패, signIn 시도...');
-                    
-                    // 일반 signIn으로 폴백
-                    const user = await authInstance.signIn({
-                        prompt: 'select_account'
-                    });
-                    
-                    accessToken = user.getAuthResponse().access_token;
-                    console.log('로그인 성공:', user.getBasicProfile().getEmail());
-                    return true;
+                const response = await fetch(filePath);
+                
+                if (!response.ok) {
+                    throw new Error(`파일을 찾을 수 없습니다: ${filePath} (${response.status})`);
                 }
                 
-            } catch (error) {
-                console.error('로그인 실패:', error);
+                const dxfString = await response.text();
+                console.log('DXF 파일 로드 완료');
                 
-                if (error.error === 'popup_closed_by_user') {
-                    alert('로그인이 취소되었습니다.\n\n모바일에서는:\n1. 팝업 차단을 해제해주세요\n2. Safari 설정 > 팝업 차단 해제\n3. Chrome 설정 > 사이트 설정 > 팝업 허용');
-                } else if (error.error === 'popup_blocked_by_browser') {
-                    alert('팝업이 차단되었습니다.\n브라우저 설정에서 팝업을 허용해주세요.');
-                } else {
-                    alert(`로그인 실패: ${error.error || error.message}`);
-                }
-                return false;
-            }
-        }
-
-        // ========================================
-        // 구글 드라이브 파일 목록 가져오기
-        // ========================================
-        
-        async function listDriveFiles() {
-            try {
-                const response = await gapi.client.drive.files.list({
-                    q: `'${FOLDER_ID}' in parents and (mimeType='image/vnd.dxf' or mimeType='application/dxf' or name contains '.dxf')`,
-                    fields: 'files(id, name, mimeType)',
-                    orderBy: 'modifiedTime desc'
-                });
-                
-                return response.result.files || [];
-            } catch (error) {
-                console.error('파일 목록 가져오기 실패:', error);
-                return [];
-            }
-        }
-
-        // ========================================
-        // DXF 파일 다운로드 및 파싱
-        // ========================================
-        
-        async function downloadDXFFile(fileId) {
-            try {
-                const response = await gapi.client.drive.files.get({
-                    fileId: fileId,
-                    alt: 'media'
-                });
-                
-                return response.body;
+                return dxfString;
             } catch (error) {
                 console.error('파일 다운로드 실패:', error);
                 throw error;
@@ -856,17 +768,14 @@
             
             const reader = new FileReader();
             reader.onload = async (event) => {
-                const imageData = event.target.result;
+                const imageData = event.target.result; // Base64 데이터
                 
-                // 이미지를 구글 드라이브에 업로드
-                const imageId = await uploadImageToDrive(file);
-                
-                if (imageId && pendingAnnotationPosition) {
-                    // 주석 추가
+                if (pendingAnnotationPosition) {
+                    // 주석 추가 (이미지를 Base64로 저장)
                     const annotation = {
                         type: 'photo',
                         position: pendingAnnotationPosition,
-                        imageId: imageId,
+                        imageData: imageData, // Base64 형식으로 저장
                         imageName: file.name,
                         timestamp: new Date().toISOString()
                     };
@@ -874,8 +783,8 @@
                     annotations.push(annotation);
                     updateAnnotationMarkers();
                     
-                    // 자동 저장
-                    await saveAnnotations();
+                    // 자동 저장 (localStorage)
+                    saveAnnotations();
                     
                     pendingAnnotationPosition = null;
                 }
@@ -902,7 +811,7 @@
             const confirmBtn = document.getElementById('confirmText');
             const cancelBtn = document.getElementById('cancelText');
             
-            confirmBtn.addEventListener('click', async () => {
+            confirmBtn.addEventListener('click', () => {
                 const text = textInput.value.trim();
                 if (text && pendingAnnotationPosition) {
                     const annotation = {
@@ -915,8 +824,8 @@
                     annotations.push(annotation);
                     updateAnnotationMarkers();
                     
-                    // 자동 저장
-                    await saveAnnotations();
+                    // 자동 저장 (localStorage)
+                    saveAnnotations();
                     
                     pendingAnnotationPosition = null;
                 }
@@ -987,145 +896,88 @@
         
         function showAnnotationDetail(annotation) {
             if (annotation.type === 'photo') {
-                alert(`사진: ${annotation.imageName}\n날짜: ${new Date(annotation.timestamp).toLocaleString('ko-KR')}`);
+                // 이미지를 새 창에 표시
+                const imageWindow = window.open('', '_blank');
+                imageWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>${annotation.imageName}</title>
+                        <style>
+                            body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+                            img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                        </style>
+                    </head>
+                    <body>
+                        <img src="${annotation.imageData}" alt="${annotation.imageName}">
+                        <p style="color: white; position: fixed; top: 10px; left: 10px;">
+                            ${annotation.imageName}<br>
+                            ${new Date(annotation.timestamp).toLocaleString('ko-KR')}
+                        </p>
+                    </body>
+                    </html>
+                `);
             } else {
                 alert(`텍스트: ${annotation.text}\n날짜: ${new Date(annotation.timestamp).toLocaleString('ko-KR')}`);
             }
         }
 
         // ========================================
-        // 구글 드라이브에 이미지 업로드
+        // 주석 저장 (localStorage 사용)
         // ========================================
         
-        async function uploadImageToDrive(file) {
-            try {
-                const metadata = {
-                    name: `${currentFileName}_${Date.now()}_${file.name}`,
-                    parents: [FOLDER_ID]
-                };
-                
-                const form = new FormData();
-                form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-                form.append('file', file);
-                
-                const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    },
-                    body: form
-                });
-                
-                const result = await response.json();
-                return result.id;
-            } catch (error) {
-                console.error('이미지 업로드 실패:', error);
-                alert('이미지 업로드에 실패했습니다.');
-                return null;
+        function saveAnnotations() {
+            if (!currentFileName || annotations.length === 0) {
+                console.log('저장할 주석이 없습니다.');
+                return;
             }
-        }
-
-        // ========================================
-        // 주석 메타데이터 저장
-        // ========================================
-        
-        async function saveAnnotations() {
-            if (!currentFileId || annotations.length === 0) return;
-            
-            showSpinner(true);
             
             try {
-                const metadata = {
-                    dxfFileId: currentFileId,
-                    dxfFileName: currentFileName,
+                const storageKey = `annotations_${currentFileName}`;
+                const data = {
+                    fileName: currentFileName,
+                    filePath: currentFilePath,
                     annotations: annotations,
                     savedAt: new Date().toISOString()
                 };
                 
-                const metadataFileName = `${currentFileName}_metadata.json`;
-                
-                // 기존 메타데이터 파일 검색
-                const existingFiles = await gapi.client.drive.files.list({
-                    q: `name='${metadataFileName}' and '${FOLDER_ID}' in parents`,
-                    fields: 'files(id)'
-                });
-                
-                const metadataBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
-                
-                if (existingFiles.result.files.length > 0) {
-                    // 기존 파일 업데이트
-                    const fileId = existingFiles.result.files[0].id;
-                    
-                    const form = new FormData();
-                    form.append('file', metadataBlob);
-                    
-                    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        },
-                        body: metadataBlob
-                    });
-                } else {
-                    // 새 파일 생성
-                    const fileMetadata = {
-                        name: metadataFileName,
-                        parents: [FOLDER_ID]
-                    };
-                    
-                    const form = new FormData();
-                    form.append('metadata', new Blob([JSON.stringify(fileMetadata)], { type: 'application/json' }));
-                    form.append('file', metadataBlob);
-                    
-                    await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${accessToken}`
-                        },
-                        body: form
-                    });
-                }
-                
-                console.log('메타데이터 저장 완료');
+                localStorage.setItem(storageKey, JSON.stringify(data));
+                console.log('주석 저장 완료:', annotations.length);
             } catch (error) {
-                console.error('메타데이터 저장 실패:', error);
-                alert('저장에 실패했습니다.');
-            } finally {
-                showSpinner(false);
+                console.error('주석 저장 실패:', error);
+                
+                // localStorage 용량 초과 시
+                if (error.name === 'QuotaExceededError') {
+                    alert('저장 공간이 부족합니다.\n이전 주석을 삭제해주세요.');
+                } else {
+                    alert('저장에 실패했습니다.');
+                }
             }
         }
 
         // ========================================
-        // 기존 주석 로드
+        // 기존 주석 로드 (localStorage에서)
         // ========================================
         
-        async function loadAnnotations() {
-            if (!currentFileId) return;
+        function loadAnnotations() {
+            if (!currentFileName) return;
             
             try {
-                const metadataFileName = `${currentFileName}_metadata.json`;
+                const storageKey = `annotations_${currentFileName}`;
+                const savedData = localStorage.getItem(storageKey);
                 
-                const response = await gapi.client.drive.files.list({
-                    q: `name='${metadataFileName}' and '${FOLDER_ID}' in parents`,
-                    fields: 'files(id)'
-                });
-                
-                if (response.result.files.length > 0) {
-                    const fileId = response.result.files[0].id;
-                    
-                    const metadataResponse = await gapi.client.drive.files.get({
-                        fileId: fileId,
-                        alt: 'media'
-                    });
-                    
-                    const metadata = JSON.parse(metadataResponse.body);
-                    annotations = metadata.annotations || [];
+                if (savedData) {
+                    const data = JSON.parse(savedData);
+                    annotations = data.annotations || [];
                     
                     updateAnnotationMarkers();
                     console.log('주석 로드 완료:', annotations.length);
+                } else {
+                    console.log('저장된 주석이 없습니다.');
+                    annotations = [];
                 }
             } catch (error) {
                 console.error('주석 로드 실패:', error);
+                annotations = [];
             }
         }
 
@@ -1133,52 +985,12 @@
         // 파일 열기 버튼
         // ========================================
         
-        async function openFile() {
-            // Google API 로드 확인
-            if (!window.gapi) {
-                alert('Google API가 아직 로드되지 않았습니다.\n잠시 후 다시 시도해주세요.');
-                console.error('gapi is not loaded');
-                
-                // 재시도
-                try {
-                    await loadGoogleAPI();
-                } catch (error) {
-                    alert('Google API 로드에 실패했습니다.\n페이지를 새로고침해주세요.');
-                    return;
-                }
-            }
-            
-            // 로그인 확인
-            try {
-                const authInstance = gapi.auth2.getAuthInstance();
-                
-                if (!authInstance) {
-                    alert('Google 인증이 초기화되지 않았습니다.\n페이지를 새로고침해주세요.');
-                    console.error('authInstance is null');
-                    return;
-                }
-                
-                console.log('현재 로그인 상태:', authInstance.isSignedIn.get());
-                
-                if (!authInstance.isSignedIn.get()) {
-                    const success = await signIn();
-                    if (!success) return;
-                }
-            } catch (error) {
-                console.error('파일 열기 오류:', error);
-                alert(`오류가 발생했습니다: ${error.message}`);
-                return;
-            }
-            
-            showSpinner(true);
-            
+        function openFile() {
             // 파일 목록 가져오기
-            const files = await listDriveFiles();
-            
-            showSpinner(false);
+            const files = listDXFFiles();
             
             if (files.length === 0) {
-                alert('DXF 파일을 찾을 수 없습니다.');
+                alert('DXF_FILES 배열에 파일이 정의되지 않았습니다.\n코드에서 DXF 파일 경로를 추가해주세요.');
                 return;
             }
             
@@ -1195,7 +1007,7 @@
                 item.className = 'file-item';
                 item.textContent = file.name;
                 item.addEventListener('click', () => {
-                    loadDXFFile(file.id, file.name);
+                    loadDXFFile(file.path, file.name);
                     document.getElementById('fileModal').classList.remove('active');
                 });
                 fileList.appendChild(item);
@@ -1208,12 +1020,12 @@
         // DXF 파일 로드 및 렌더링
         // ========================================
         
-        async function loadDXFFile(fileId, fileName) {
+        async function loadDXFFile(filePath, fileName) {
             showSpinner(true);
             
             try {
-                // DXF 파일 다운로드
-                const dxfString = await downloadDXFFile(fileId);
+                // DXF 파일 다운로드 (fetch 사용)
+                const dxfString = await downloadDXFFile(filePath);
                 
                 // DXF 파싱
                 dxfData = parseDXF(dxfString);
@@ -1222,7 +1034,7 @@
                 renderDXF(dxfData);
                 
                 // 현재 파일 정보 저장
-                currentFileId = fileId;
+                currentFilePath = filePath;
                 currentFileName = fileName.replace('.dxf', '');
                 
                 // UI 업데이트
@@ -1232,13 +1044,13 @@
                 document.getElementById('textBtn').disabled = false;
                 document.getElementById('fitBtn').disabled = false;
                 
-                // 기존 주석 로드
+                // 기존 주석 로드 (localStorage에서)
                 annotations = [];
-                await loadAnnotations();
+                loadAnnotations();
                 
             } catch (error) {
                 console.error('파일 로드 실패:', error);
-                alert('파일을 불러오는데 실패했습니다.');
+                alert(`파일을 불러오는데 실패했습니다.\n\n오류: ${error.message}`);
             } finally {
                 showSpinner(false);
             }
@@ -1266,8 +1078,8 @@
             document.getElementById('openBtn').addEventListener('click', openFile);
             
             // 저장 버튼
-            document.getElementById('saveBtn').addEventListener('click', async () => {
-                await saveAnnotations();
+            document.getElementById('saveBtn').addEventListener('click', () => {
+                saveAnnotations();
                 alert('저장되었습니다.');
             });
             
@@ -1294,7 +1106,7 @@
         // 초기화 및 시작
         // ========================================
         
-        async function init() {
+        function init() {
             console.log('앱 초기화 시작...');
             
             try {
@@ -1313,55 +1125,12 @@
                 // 텍스트 모달 설정
                 setupTextModal();
                 
-                // Google API 초기화
-                console.log('Google API 로드 대기 중...');
-                await loadGoogleAPI();
-                
                 console.log('앱 초기화 완료 ✓');
                 
             } catch (error) {
                 console.error('앱 초기화 실패:', error);
                 alert(`초기화 중 오류가 발생했습니다.\n\n${error.message}\n\n페이지를 새로고침해주세요.`);
             }
-        }
-
-        // ========================================
-        // Google API 스크립트 로드
-        // ========================================
-        
-        function loadGoogleAPI() {
-            return new Promise((resolve, reject) => {
-                // gapi가 로드될 때까지 대기 (최대 30초로 증가)
-                let attempts = 0;
-                const maxAttempts = 150; // 30초 = 150 * 200ms
-                
-                console.log('Google API 로드 체크 시작...');
-                console.log('window.gapi 상태:', typeof window.gapi);
-                
-                const checkGapi = setInterval(() => {
-                    attempts++;
-                    
-                    if (window.gapi) {
-                        clearInterval(checkGapi);
-                        console.log('✓ Google API 감지됨! 초기화 시작...');
-                        initGoogleAPI()
-                            .then(resolve)
-                            .catch(reject);
-                    } else if (attempts >= maxAttempts) {
-                        clearInterval(checkGapi);
-                        console.error('✗ Google API 로드 타임아웃 (30초 경과)');
-                        console.error('window.gapi:', window.gapi);
-                        console.error('document.readyState:', document.readyState);
-                        
-                        reject(new Error('Google API를 로드할 수 없습니다.\n\n가능한 원인:\n1. 인터넷 연결 불안정\n2. 방화벽/광고차단기\n3. Google 서비스 차단\n\n페이지를 새로고침하거나 다른 브라우저를 시도해보세요.'));
-                    } else {
-                        // 매 1초마다만 로그 출력 (5번째 시도마다)
-                        if (attempts % 5 === 0) {
-                            console.log(`Google API 로드 대기 중... ${attempts * 0.2}초 경과`);
-                        }
-                    }
-                }, 200); // 200ms마다 체크
-            });
         }
 
         // 앱 시작
