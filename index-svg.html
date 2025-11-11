@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>DMAP - SVG 버전 (경량)</title>
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- 로딩 오버레이 -->
+    <div id="loadingOverlay" class="overlay">
+        <div class="spinner"></div>
+        <p>로딩 중...</p>
+        <p style="font-size: 12px; color: #666; margin-top: 10px;">
+            SVG 방식 - 외부 라이브러리 불필요
+        </p>
+    </div>
+
+    <!-- 메인 컨테이너 -->
+    <div id="app" class="hidden">
+        <!-- 헤더 -->
+        <header>
+            <div class="header-left">
+                <button id="backBtn" class="icon-btn hidden">
+                    <span>◀</span>
+                </button>
+                <h1 id="appTitle">DMAP (SVG)</h1>
+            </div>
+            <div class="header-right">
+                <button id="userBtn" class="icon-btn">
+                    <span id="userIcon">👤</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- 파일 목록 화면 -->
+        <div id="fileListScreen" class="screen">
+            <div class="screen-header">
+                <h2>📁 DXF 도면 목록</h2>
+                <button id="refreshBtn" class="btn-secondary">🔄 새로고침</button>
+            </div>
+            <div class="info-box" style="margin: 16px; padding: 12px; background: #fff3cd; border-radius: 6px;">
+                <strong>ℹ️ SVG 경량 버전</strong><br>
+                외부 라이브러리 없이 순수 JavaScript로 작동합니다.<br>
+                LINE, CIRCLE, ARC 지원
+            </div>
+            <div id="fileList" class="file-list">
+                <p class="loading-text">파일 목록을 불러오는 중...</p>
+            </div>
+        </div>
+
+        <!-- DXF 뷰어 화면 -->
+        <div id="viewerScreen" class="screen hidden">
+            <!-- 도구 모음 -->
+            <div id="toolbar" class="toolbar">
+                <button id="fitViewBtn" class="tool-btn" title="전체보기">
+                    <span>🔲</span>
+                </button>
+                <button id="addPhotoBtn" class="tool-btn" title="사진 추가">
+                    <span>📷</span>
+                </button>
+                <button id="addTextBtn" class="tool-btn" title="텍스트 추가">
+                    <span>📝</span>
+                </button>
+                <button id="saveBtn" class="tool-btn primary" title="저장">
+                    <span>💾</span>
+                </button>
+            </div>
+
+            <!-- SVG 뷰어 컨테이너 -->
+            <div id="viewerContainer">
+                <!-- SVG가 여기에 삽입됨 -->
+                <div id="annotationLayer"></div>
+            </div>
+
+            <!-- 롱프레스 메뉴 -->
+            <div id="contextMenu" class="context-menu hidden">
+                <button id="menuPhotoBtn" class="menu-item">
+                    📷 사진 추가
+                </button>
+                <button id="menuTextBtn" class="menu-item">
+                    📝 텍스트 추가
+                </button>
+                <button id="menuCancelBtn" class="menu-item cancel">
+                    ❌ 취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 사진/텍스트 모달 (동일) -->
+    <div id="photoModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>사진 추가</h3>
+            <div class="photo-options">
+                <button id="takePictureBtn" class="btn-primary">📸 사진 촬영</button>
+                <button id="selectPictureBtn" class="btn-primary">🖼️ 갤러리에서 선택</button>
+            </div>
+            <div id="photoPreview" class="photo-preview hidden">
+                <img id="previewImage" alt="미리보기">
+                <textarea id="photoMemo" placeholder="메모를 입력하세요..." rows="3"></textarea>
+                <div class="modal-actions">
+                    <button id="confirmPhotoBtn" class="btn-primary">확인</button>
+                    <button id="cancelPhotoBtn" class="btn-secondary">취소</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="textModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>텍스트 추가</h3>
+            <textarea id="textInput" placeholder="텍스트를 입력하세요..." rows="4"></textarea>
+            <div class="modal-actions">
+                <button id="confirmTextBtn" class="btn-primary">확인</button>
+                <button id="cancelTextBtn" class="btn-secondary">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="imageViewerModal" class="modal hidden">
+        <div class="modal-content image-viewer">
+            <button id="closeImageBtn" class="close-btn">✕</button>
+            <img id="fullImage" alt="전체 이미지">
+            <p id="imageMemo" class="image-memo"></p>
+        </div>
+    </div>
+
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+    <input type="file" id="galleryInput" accept="image/*" style="display:none">
+
+    <!-- Google Identity Services만 필요 -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <!-- SVG 버전 앱 스크립트 -->
+    <script type="module">
+        import GoogleDriveManager from './google-drive.js';
+        import DxfSvgViewer from './dxf-svg-viewer.js';
+        import AnnotationManager from './photo-manager.js';
+
+        // SVG 버전 앱 (Three.js 불필요)
+        class DmapSvgApp {
+            constructor() {
+                this.driveManager = new GoogleDriveManager();
+                this.viewer = null;
+                this.annotationManager = null;
+                this.currentFile = null;
+                this.longPressTimer = null;
+                this.longPressPosition = null;
+                
+                this.initialize();
+            }
+
+            async initialize() {
+                try {
+                    console.log('🎨 SVG 버전 앱 초기화...');
+                    
+                    // Google Drive API만 대기
+                    await this.driveManager.initialize();
+
+                    document.getElementById('loadingOverlay').classList.add('hidden');
+                    document.getElementById('app').classList.remove('hidden');
+
+                    this.setupEventListeners();
+                    await this.checkAuthentication();
+
+                    console.log('✅ SVG 버전 초기화 완료');
+                } catch (error) {
+                    console.error('초기화 실패:', error);
+                    alert('앱 초기화에 실패했습니다: ' + error.message);
+                }
+            }
+
+            async checkAuthentication() {
+                if (!this.driveManager.accessToken) {
+                    await this.showLoginPrompt();
+                } else {
+                    await this.loadFileList();
+                }
+            }
+
+            async showLoginPrompt() {
+                if (confirm('Google Drive에 로그인하시겠습니까?')) {
+                    try {
+                        await this.driveManager.authenticate();
+                        await this.loadFileList();
+                    } catch (error) {
+                        console.error('로그인 실패:', error);
+                        alert('로그인에 실패했습니다.');
+                    }
+                }
+            }
+
+            async loadFileList() {
+                try {
+                    const files = await this.driveManager.listDxfFiles();
+                    this.renderFileList(files);
+                } catch (error) {
+                    console.error('파일 목록 불러오기 실패:', error);
+                }
+            }
+
+            renderFileList(files) {
+                const fileList = document.getElementById('fileList');
+                fileList.innerHTML = '';
+
+                if (files.length === 0) {
+                    fileList.innerHTML = '<p class="loading-text">DXF 파일이 없습니다.</p>';
+                    return;
+                }
+
+                files.forEach(file => {
+                    const item = document.createElement('div');
+                    item.className = 'file-item';
+                    item.innerHTML = `
+                        <div class="file-icon">📄</div>
+                        <div class="file-info">
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-date">${new Date(file.modifiedTime).toLocaleString('ko-KR')}</div>
+                        </div>
+                    `;
+                    item.addEventListener('click', () => this.openFile(file));
+                    fileList.appendChild(item);
+                });
+            }
+
+            async openFile(file) {
+                try {
+                    const dxfContent = await this.driveManager.downloadFile(file.id);
+
+                    // SVG 뷰어 초기화
+                    if (!this.viewer) {
+                        const container = document.getElementById('viewerContainer');
+                        const annotationLayer = document.getElementById('annotationLayer');
+                        this.viewer = new DxfSvgViewer(container);
+                        this.annotationManager = new AnnotationManager(
+                            this.viewer,
+                            annotationLayer,
+                            this.driveManager
+                        );
+                    }
+
+                    await this.viewer.loadDxf(dxfContent);
+                    this.annotationManager.setDxfFile(file.name);
+                    await this.annotationManager.loadAnnotations();
+
+                    this.currentFile = file;
+                    this.showViewerScreen();
+                } catch (error) {
+                    console.error('파일 열기 실패:', error);
+                    alert('파일을 열 수 없습니다: ' + error.message);
+                }
+            }
+
+            showViewerScreen() {
+                document.getElementById('fileListScreen').classList.add('hidden');
+                document.getElementById('viewerScreen').classList.remove('hidden');
+                document.getElementById('backBtn').classList.remove('hidden');
+                document.getElementById('appTitle').textContent = this.currentFile?.name || 'DMAP';
+            }
+
+            showFileListScreen() {
+                document.getElementById('viewerScreen').classList.add('hidden');
+                document.getElementById('fileListScreen').classList.remove('hidden');
+                document.getElementById('backBtn').classList.add('hidden');
+                document.getElementById('appTitle').textContent = 'DMAP (SVG)';
+            }
+
+            setupEventListeners() {
+                document.getElementById('backBtn').addEventListener('click', () => this.showFileListScreen());
+                document.getElementById('refreshBtn').addEventListener('click', () => this.loadFileList());
+                document.getElementById('fitViewBtn').addEventListener('click', () => {
+                    if (this.viewer) this.viewer.fitToView();
+                });
+                
+                // 나머지 이벤트는 app.js와 동일...
+            }
+        }
+
+        // 앱 시작
+        window.addEventListener('DOMContentLoaded', () => {
+            new DmapSvgApp();
+        });
+    </script>
+</body>
+</html>
+
