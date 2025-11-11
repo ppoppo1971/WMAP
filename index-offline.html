@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>DMAP - 도면 뷰어</title>
+    <title>DMAP - 도면 뷰어 (백업)</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
@@ -21,6 +21,9 @@
     <div id="loadingOverlay" class="overlay">
         <div class="spinner"></div>
         <p>로딩 중...</p>
+        <p style="font-size: 12px; color: #666; margin-top: 10px;">
+            대체 CDN 사용 중...
+        </p>
     </div>
 
     <!-- 메인 컨테이너 -->
@@ -139,15 +142,87 @@
     <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
     <input type="file" id="galleryInput" accept="image/*" style="display:none">
 
-    <!-- 외부 라이브러리 (순차적 로딩) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <script src="https://unpkg.com/dxf-parser@1.5.0/dist/dxf-parser.min.js"></script>
-    
-    <!-- Google Identity Services -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    
-    <!-- 앱 스크립트 -->
-    <script type="module" src="app.js"></script>
+    <!-- 외부 라이브러리 (여러 CDN 대체) -->
+    <script>
+        // Three.js 로딩 (여러 CDN 시도)
+        (function() {
+            const cdns = [
+                'https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js',
+                'https://unpkg.com/three@0.150.1/build/three.min.js',
+                'https://cdnjs.cloudflare.com/ajax/libs/three.js/r150/three.min.js'
+            ];
+            
+            let index = 0;
+            
+            function loadThree() {
+                if (index >= cdns.length) {
+                    console.error('❌ Three.js를 로드할 수 없습니다');
+                    return;
+                }
+                
+                const script = document.createElement('script');
+                script.src = cdns[index];
+                script.onload = () => {
+                    console.log('✅ Three.js 로드 완료:', cdns[index]);
+                    loadDxfParser();
+                };
+                script.onerror = () => {
+                    console.warn('⚠️ Three.js 로드 실패:', cdns[index]);
+                    index++;
+                    loadThree();
+                };
+                document.head.appendChild(script);
+            }
+            
+            function loadDxfParser() {
+                const cdns = [
+                    'https://unpkg.com/dxf-parser@1.5.0/dist/dxf-parser.min.js',
+                    'https://cdn.jsdelivr.net/npm/dxf-parser@1.5.0/dist/dxf-parser.min.js'
+                ];
+                
+                let index = 0;
+                
+                function tryLoad() {
+                    if (index >= cdns.length) {
+                        console.error('❌ DxfParser를 로드할 수 없습니다');
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    script.src = cdns[index];
+                    script.onload = () => {
+                        console.log('✅ DxfParser 로드 완료:', cdns[index]);
+                        loadApp();
+                    };
+                    script.onerror = () => {
+                        console.warn('⚠️ DxfParser 로드 실패:', cdns[index]);
+                        index++;
+                        tryLoad();
+                    };
+                    document.head.appendChild(script);
+                }
+                
+                tryLoad();
+            }
+            
+            function loadApp() {
+                // Google Identity Services
+                const gis = document.createElement('script');
+                gis.src = 'https://accounts.google.com/gsi/client';
+                gis.async = true;
+                gis.defer = true;
+                document.head.appendChild(gis);
+                
+                // 앱 스크립트
+                const app = document.createElement('script');
+                app.type = 'module';
+                app.src = 'app.js';
+                document.head.appendChild(app);
+            }
+            
+            loadThree();
+        })();
+    </script>
 </body>
 </html>
 

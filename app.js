@@ -59,15 +59,30 @@ class DmapApp {
      * 필수 라이브러리 로딩 대기
      */
     async waitForLibraries() {
-        const maxWait = 10000; // 최대 10초 대기
+        const maxWait = 30000; // 최대 30초 대기
         const startTime = Date.now();
 
         return new Promise((resolve, reject) => {
+            let checkCount = 0;
+            
             const checkLibraries = setInterval(() => {
+                checkCount++;
+                
+                // 로딩 상태 로그 (5초마다)
+                if (checkCount % 50 === 0) {
+                    console.log('라이브러리 로딩 중...', {
+                        THREE: !!window.THREE,
+                        DxfParser: !!window.DxfParser,
+                        elapsed: Date.now() - startTime
+                    });
+                }
+
                 // Three.js와 DxfParser 확인
                 if (window.THREE && window.DxfParser) {
                     clearInterval(checkLibraries);
-                    console.log('라이브러리 로딩 완료');
+                    console.log('✅ 라이브러리 로딩 완료');
+                    console.log('- Three.js:', window.THREE.REVISION);
+                    console.log('- DxfParser:', typeof window.DxfParser);
                     resolve();
                     return;
                 }
@@ -75,7 +90,22 @@ class DmapApp {
                 // 타임아웃 체크
                 if (Date.now() - startTime > maxWait) {
                     clearInterval(checkLibraries);
-                    reject(new Error('라이브러리 로딩 시간 초과'));
+                    
+                    // 상세한 오류 정보
+                    const errorInfo = {
+                        THREE: !!window.THREE,
+                        DxfParser: !!window.DxfParser,
+                        elapsed: Date.now() - startTime
+                    };
+                    
+                    console.error('❌ 라이브러리 로딩 실패:', errorInfo);
+                    
+                    reject(new Error(
+                        '라이브러리 로딩 시간 초과\n' +
+                        `THREE.js: ${errorInfo.THREE ? '✓' : '✗'}\n` +
+                        `DxfParser: ${errorInfo.DxfParser ? '✓' : '✗'}\n` +
+                        '인터넷 연결을 확인하고 페이지를 새로고침하세요.'
+                    ));
                 }
             }, 100);
         });
