@@ -1,0 +1,25 @@
+{
+  "name": "DMAP - 도면 뷰어",
+  "short_name": "DMAP",
+  "description": "모바일에서 DXF 도면을 보고 사진과 텍스트를 추가하는 웹앱",
+  "start_url": "/DMAP/",
+  "display": "standalone",
+  "background_color": "#2196F3",
+  "theme_color": "#2196F3",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>DMAP - 도면 뷰어</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- 파비콘 -->
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- 로딩 오버레이 -->
+    <div id="loadingOverlay" class="overlay">
+        <div class="spinner"></div>
+        <p>로딩 중...</p>
+    </div>
+
+    <!-- 메인 컨테이너 -->
+    <div id="app" class="hidden">
+        <!-- 헤더 -->
+        <header>
+            <div class="header-left">
+                <button id="backBtn" class="icon-btn hidden">
+                    <span>◀</span>
+                </button>
+                <h1 id="appTitle">DMAP</h1>
+            </div>
+            <div class="header-right">
+                <button id="userBtn" class="icon-btn">
+                    <span id="userIcon">👤</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- 파일 목록 화면 -->
+        <div id="fileListScreen" class="screen">
+            <div class="screen-header">
+                <h2>📁 DXF 도면 목록</h2>
+                <button id="refreshBtn" class="btn-secondary">🔄 새로고침</button>
+            </div>
+            <div id="fileList" class="file-list">
+                <p class="loading-text">파일 목록을 불러오는 중...</p>
+            </div>
+        </div>
+
+        <!-- DXF 뷰어 화면 -->
+        <div id="viewerScreen" class="screen hidden">
+            <!-- 도구 모음 -->
+            <div id="toolbar" class="toolbar">
+                <button id="fitViewBtn" class="tool-btn" title="전체보기">
+                    <span>🔲</span>
+                </button>
+                <button id="addPhotoBtn" class="tool-btn" title="사진 추가">
+                    <span>📷</span>
+                </button>
+                <button id="addTextBtn" class="tool-btn" title="텍스트 추가">
+                    <span>📝</span>
+                </button>
+                <button id="saveBtn" class="tool-btn primary" title="저장">
+                    <span>💾</span>
+                </button>
+            </div>
+
+            <!-- DXF 뷰어 캔버스 -->
+            <div id="viewerContainer">
+                <canvas id="viewerCanvas"></canvas>
+                <!-- 어노테이션 오버레이 (사진 이모지, 텍스트 표시) -->
+                <div id="annotationLayer"></div>
+            </div>
+
+            <!-- 롱프레스 메뉴 -->
+            <div id="contextMenu" class="context-menu hidden">
+                <button id="menuPhotoBtn" class="menu-item">
+                    📷 사진 추가
+                </button>
+                <button id="menuTextBtn" class="menu-item">
+                    📝 텍스트 추가
+                </button>
+                <button id="menuCancelBtn" class="menu-item cancel">
+                    ❌ 취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 사진 입력 모달 -->
+    <div id="photoModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>사진 추가</h3>
+            <div class="photo-options">
+                <button id="takePictureBtn" class="btn-primary">
+                    📸 사진 촬영
+                </button>
+                <button id="selectPictureBtn" class="btn-primary">
+                    🖼️ 갤러리에서 선택
+                </button>
+            </div>
+            <div id="photoPreview" class="photo-preview hidden">
+                <img id="previewImage" alt="미리보기">
+                <textarea id="photoMemo" placeholder="메모를 입력하세요..." rows="3"></textarea>
+                <div class="modal-actions">
+                    <button id="confirmPhotoBtn" class="btn-primary">확인</button>
+                    <button id="cancelPhotoBtn" class="btn-secondary">취소</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 텍스트 입력 모달 -->
+    <div id="textModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>텍스트 추가</h3>
+            <textarea id="textInput" placeholder="텍스트를 입력하세요..." rows="4"></textarea>
+            <div class="modal-actions">
+                <button id="confirmTextBtn" class="btn-primary">확인</button>
+                <button id="cancelTextBtn" class="btn-secondary">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 이미지 뷰어 모달 -->
+    <div id="imageViewerModal" class="modal hidden">
+        <div class="modal-content image-viewer">
+            <button id="closeImageBtn" class="close-btn">✕</button>
+            <img id="fullImage" alt="전체 이미지">
+            <p id="imageMemo" class="image-memo"></p>
+        </div>
+    </div>
+
+    <!-- 숨겨진 파일 입력 -->
+    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+    <input type="file" id="galleryInput" accept="image/*" style="display:none">
+
+    <!-- 외부 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three-dxf@3.1.6/dist/three-dxf.umd.js"></script>
+    
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <!-- 앱 스크립트 -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
+
