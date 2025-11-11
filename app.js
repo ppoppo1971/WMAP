@@ -12,6 +12,7 @@ class DxfPhotoEditor {
         // 화면 요소
         this.fileListScreen = document.getElementById('file-list-screen');
         this.viewerScreen = document.getElementById('viewer-screen');
+        this.viewerUI = document.getElementById('viewer-ui');
         
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
@@ -573,6 +574,7 @@ class DxfPhotoEditor {
     showFileList() {
         this.fileListScreen.classList.remove('hidden');
         this.viewerScreen.classList.add('hidden');
+        this.viewerUI.classList.add('hidden'); // UI 버튼들 숨김
         this.closeSlideMenu(); // 메뉴 닫기
     }
     
@@ -582,6 +584,7 @@ class DxfPhotoEditor {
     showViewer() {
         this.fileListScreen.classList.add('hidden');
         this.viewerScreen.classList.remove('hidden');
+        this.viewerUI.classList.remove('hidden'); // UI 버튼들 표시
     }
     
     /**
@@ -705,8 +708,8 @@ class DxfPhotoEditor {
     renderFileList(files) {
         const fileListDiv = document.getElementById('file-list');
         
-        if (files.length === 0) {
-            fileListDiv.innerHTML = '<p class="info-text">📭 DXF 파일이 없습니다.<br><br>Google Drive 폴더에 DXF 파일을 업로드하세요.</p>';
+        if (!files || files.length === 0) {
+            fileListDiv.innerHTML = '<p class="info-text">📭 DXF 파일이 없습니다.</p>';
             return;
         }
         
@@ -717,7 +720,7 @@ class DxfPhotoEditor {
             fileItem.className = 'file-item';
             fileItem.innerHTML = `
                 <div class="file-item-name">📐 ${file.name}</div>
-                <div class="file-item-date">수정: ${new Date(file.modifiedTime).toLocaleString('ko-KR')}</div>
+                <div class="file-item-date">${new Date(file.modifiedTime).toLocaleString('ko-KR')}</div>
             `;
             
             fileItem.addEventListener('click', async () => {
