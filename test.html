@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMAP 라이브러리 테스트</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        h1 {
+            color: #2196F3;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #2196F3;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            color: #333;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .status-item {
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #ccc;
+        }
+
+        .status-item.success {
+            background: #e8f5e9;
+            border-color: #4caf50;
+        }
+
+        .status-item.error {
+            background: #ffebee;
+            border-color: #f44336;
+        }
+
+        .status-item.loading {
+            background: #fff3e0;
+            border-color: #ff9800;
+        }
+
+        .status-item h3 {
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .status-item p {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #2196F3;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1976D2;
+        }
+
+        .btn-secondary {
+            background: #FF9800;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #F57C00;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #d32f2f;
+        }
+
+        #console {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .log-time {
+            color: #858585;
+            margin-right: 10px;
+        }
+
+        .log-info {
+            color: #4fc3f7;
+        }
+
+        .log-success {
+            color: #81c784;
+        }
+
+        .log-error {
+            color: #e57373;
+        }
+
+        .log-warn {
+            color: #ffb74d;
+        }
+
+        #viewer {
+            width: 100%;
+            height: 500px;
+            background: #1a1a1a;
+            border-radius: 6px;
+            margin-top: 20px;
+            position: relative;
+        }
+
+        #viewerCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .file-upload {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .file-upload:hover {
+            border-color: #2196F3;
+            background: #f0f8ff;
+        }
+
+        .file-upload input {
+            display: none;
+        }
+
+        .version-info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+        }
+
+        .version-info pre {
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+
+        .clear-console {
+            float: right;
+            padding: 5px 15px;
+            background: #f44336;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .clear-console:hover {
+            background: #d32f2f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 DMAP 라이브러리 & DXF 로딩 테스트</h1>
+        
+        <div class="button-group">
+            <button class="btn-primary" onclick="testAll()">🧪 전체 테스트 실행</button>
+            <button class="btn-secondary" onclick="clearCache()">🗑️ 캐시 삭제 & 새로고침</button>
+            <button class="btn-secondary" onclick="testLibraries()">📚 라이브러리만 테스트</button>
+            <button class="btn-danger" onclick="location.reload()">🔄 새로고침</button>
+        </div>
+
+        <h2>📊 라이브러리 로딩 상태</h2>
+        <div class="status" id="libraryStatus">
+            <div class="status-item loading">
+                <h3>Three.js</h3>
+                <p id="threeStatus">확인 중...</p>
+            </div>
+            <div class="status-item loading">
+                <h3>three-dxf</h3>
+                <p id="dxfStatus">확인 중...</p>
+            </div>
+            <div class="status-item loading">
+                <h3>Google Identity Services</h3>
+                <p id="googleStatus">확인 중...</p>
+            </div>
+        </div>
+
+        <h2>📁 DXF 파일 테스트</h2>
+        <div class="file-upload" onclick="document.getElementById('dxfInput').click()">
+            <p>📄 DXF 파일을 선택하거나 드래그하세요</p>
+            <input type="file" id="dxfInput" accept=".dxf" onchange="loadDxfFile(this.files[0])">
+        </div>
+
+        <h2>🖥️ 콘솔 로그</h2>
+        <button class="clear-console" onclick="clearConsole()">로그 지우기</button>
+        <div id="console"></div>
+
+        <div id="viewer" style="display: none;">
+            <canvas id="viewerCanvas"></canvas>
+        </div>
+
+        <div class="version-info">
+            <h2>📋 시스템 정보</h2>
+            <pre id="systemInfo">로딩 중...</pre>
+        </div>
+    </div>
+
+    <!-- Three.js -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+    
+    <!-- three-dxf -->
+    <script src="https://cdn.jsdelivr.net/npm/three-dxf@3.1.6/dist/three-dxf.umd.js"></script>
+    
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+    <script>
+        // 캐시 버스팅을 위한 타임스탬프
+        const CACHE_VERSION = Date.now();
+        
+        // 커스텀 콘솔 로그
+        const consoleElement = document.getElementById('console');
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn,
+            info: console.info
+        };
+
+        function logToConsole(message, type = 'info') {
+            const time = new Date().toLocaleTimeString('ko-KR');
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            logEntry.innerHTML = `
+                <span class="log-time">[${time}]</span>
+                <span class="log-${type}">${escapeHtml(String(message))}</span>
+            `;
+            
+            consoleElement.appendChild(logEntry);
+            consoleElement.scrollTop = consoleElement.scrollHeight;
+            
+            // 원본 콘솔에도 출력
+            if (type === 'error') {
+                originalConsole.error(message);
+            } else if (type === 'warn') {
+                originalConsole.warn(message);
+            } else {
+                originalConsole.log(message);
+            }
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function clearConsole() {
+            consoleElement.innerHTML = '';
+            logToConsole('콘솔이 초기화되었습니다.', 'info');
+        }
+
+        // 콘솔 오버라이드
+        console.log = function(...args) {
+            logToConsole(args.join(' '), 'info');
+        };
+        console.error = function(...args) {
+            logToConsole(args.join(' '), 'error');
+        };
+        console.warn = function(...args) {
+            logToConsole(args.join(' '), 'warn');
+        };
+        console.info = function(...args) {
+            logToConsole(args.join(' '), 'info');
+        };
+
+        // 캐시 삭제
+        async function clearCache() {
+            try {
+                logToConsole('🗑️ 캐시 삭제 중...', 'info');
+                
+                // Service Worker 캐시 삭제
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    await Promise.all(
+                        cacheNames.map(cacheName => caches.delete(cacheName))
+                    );
+                    logToConsole(`✓ ${cacheNames.length}개의 캐시 삭제됨`, 'success');
+                }
+                
+                // LocalStorage 삭제
+                localStorage.clear();
+                logToConsole('✓ LocalStorage 삭제됨', 'success');
+                
+                // SessionStorage 삭제
+                sessionStorage.clear();
+                logToConsole('✓ SessionStorage 삭제됨', 'success');
+                
+                logToConsole('🔄 3초 후 새로고침...', 'info');
+                setTimeout(() => {
+                    location.reload(true);
+                }, 3000);
+                
+            } catch (error) {
+                logToConsole('❌ 캐시 삭제 실패: ' + error.message, 'error');
+            }
+        }
+
+        // 라이브러리 테스트
+        async function testLibraries() {
+            logToConsole('=== 라이브러리 테스트 시작 ===', 'info');
+            
+            // Three.js 테스트
+            const threeStatus = document.getElementById('threeStatus');
+            const threeItem = threeStatus.closest('.status-item');
+            
+            if (typeof THREE !== 'undefined') {
+                threeStatus.textContent = `✓ 로드됨 (r${THREE.REVISION})`;
+                threeItem.className = 'status-item success';
+                logToConsole(`✓ Three.js 로드 성공: r${THREE.REVISION}`, 'success');
+                
+                // 기본 Three.js 기능 테스트
+                try {
+                    const scene = new THREE.Scene();
+                    const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+                    logToConsole('✓ Three.js Scene/Camera 생성 성공', 'success');
+                } catch (e) {
+                    logToConsole('❌ Three.js 기능 오류: ' + e.message, 'error');
+                }
+            } else {
+                threeStatus.textContent = '❌ 로드 실패';
+                threeItem.className = 'status-item error';
+                logToConsole('❌ Three.js 로드 실패 - CDN 확인 필요', 'error');
+            }
+            
+            // three-dxf 테스트
+            const dxfStatus = document.getElementById('dxfStatus');
+            const dxfItem = dxfStatus.closest('.status-item');
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            if (typeof ThreeDxf !== 'undefined') {
+                dxfStatus.textContent = '✓ 로드됨';
+                dxfItem.className = 'status-item success';
+                logToConsole('✓ three-dxf 로드 성공', 'success');
+                
+                // three-dxf Parser 테스트
+                try {
+                    const parser = new ThreeDxf.Parser();
+                    logToConsole('✓ three-dxf Parser 생성 성공', 'success');
+                    logToConsole('  Parser 메서드: ' + Object.keys(parser).join(', '), 'info');
+                } catch (e) {
+                    logToConsole('❌ three-dxf Parser 생성 실패: ' + e.message, 'error');
+                }
+            } else {
+                dxfStatus.textContent = '❌ 로드 실패';
+                dxfItem.className = 'status-item error';
+                logToConsole('❌ three-dxf 로드 실패 - CDN 확인 필요', 'error');
+                logToConsole('  window.ThreeDxf: ' + typeof window.ThreeDxf, 'warn');
+            }
+            
+            // Google Identity Services 테스트
+            const googleStatus = document.getElementById('googleStatus');
+            const googleItem = googleStatus.closest('.status-item');
+            
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            if (typeof google !== 'undefined' && google.accounts) {
+                googleStatus.textContent = '✓ 로드됨';
+                googleItem.className = 'status-item success';
+                logToConsole('✓ Google Identity Services 로드 성공', 'success');
+            } else {
+                googleStatus.textContent = '⚠️ 부분 로드 (정상)';
+                googleItem.className = 'status-item success';
+                logToConsole('⚠️ Google Identity Services 아직 로딩 중 (비동기)', 'warn');
+            }
+            
+            logToConsole('=== 라이브러리 테스트 완료 ===', 'info');
+        }
+
+        // DXF 파일 로드 테스트
+        async function loadDxfFile(file) {
+            if (!file) {
+                logToConsole('❌ 파일이 선택되지 않았습니다.', 'error');
+                return;
+            }
+            
+            logToConsole(`=== DXF 파일 로드 시작: ${file.name} ===`, 'info');
+            logToConsole(`  파일 크기: ${(file.size / 1024).toFixed(2)} KB`, 'info');
+            
+            try {
+                // 파일 읽기
+                logToConsole('1️⃣ 파일 읽기 시작...', 'info');
+                const text = await file.text();
+                logToConsole(`✓ 파일 읽기 완료 (${text.length} 문자)`, 'success');
+                logToConsole(`  첫 100자: ${text.substring(0, 100)}...`, 'info');
+                
+                // three-dxf 확인
+                if (typeof ThreeDxf === 'undefined') {
+                    throw new Error('three-dxf 라이브러리가 로드되지 않았습니다.');
+                }
+                
+                // Parser 생성
+                logToConsole('2️⃣ three-dxf Parser 생성...', 'info');
+                const parser = new ThreeDxf.Parser();
+                logToConsole('✓ Parser 생성 완료', 'success');
+                
+                // DXF 파싱
+                logToConsole('3️⃣ DXF 파싱 시작...', 'info');
+                const dxf = parser.parseSync(text);
+                logToConsole('✓ DXF 파싱 완료', 'success');
+                logToConsole(`  엔티티 수: ${dxf.entities ? dxf.entities.length : 0}`, 'info');
+                logToConsole(`  DXF 구조: ${JSON.stringify(Object.keys(dxf), null, 2)}`, 'info');
+                
+                // Three.js 렌더링 테스트
+                logToConsole('4️⃣ Three.js 렌더링 테스트...', 'info');
+                await renderDxf(dxf);
+                
+                logToConsole('=== DXF 파일 로드 완료 ===', 'success');
+                
+            } catch (error) {
+                logToConsole('❌ DXF 로드 실패: ' + error.message, 'error');
+                logToConsole('  스택 트레이스: ' + error.stack, 'error');
+            }
+        }
+
+        // DXF 렌더링
+        let renderer, scene, camera;
+        
+        async function renderDxf(dxfData) {
+            try {
+                const viewerDiv = document.getElementById('viewer');
+                const canvas = document.getElementById('viewerCanvas');
+                
+                viewerDiv.style.display = 'block';
+                
+                // Scene 설정
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x1a1a1a);
+                logToConsole('✓ Three.js Scene 생성', 'success');
+                
+                // Camera 설정
+                camera = new THREE.OrthographicCamera(-100, 100, 100, -100, 0.1, 1000);
+                camera.position.set(0, 0, 100);
+                camera.lookAt(0, 0, 0);
+                logToConsole('✓ Three.js Camera 생성', 'success');
+                
+                // Renderer 설정
+                if (!renderer) {
+                    renderer = new THREE.WebGLRenderer({ 
+                        canvas: canvas,
+                        antialias: true 
+                    });
+                    renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+                    logToConsole('✓ Three.js Renderer 생성', 'success');
+                }
+                
+                // 조명
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+                scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+                directionalLight.position.set(0, 0, 1);
+                scene.add(directionalLight);
+                
+                // DXF 엔티티 렌더링
+                const group = new THREE.Group();
+                let entityCount = 0;
+                
+                if (dxfData && dxfData.entities) {
+                    logToConsole(`  처리할 엔티티: ${dxfData.entities.length}개`, 'info');
+                    
+                    dxfData.entities.forEach((entity, index) => {
+                        try {
+                            if (entity.vertices && entity.vertices.length > 0) {
+                                const geometry = new THREE.BufferGeometry();
+                                const positions = [];
+                                
+                                entity.vertices.forEach(vertex => {
+                                    positions.push(vertex.x, vertex.y, vertex.z || 0);
+                                });
+                                
+                                geometry.setAttribute('position', 
+                                    new THREE.Float32BufferAttribute(positions, 3));
+                                
+                                const material = new THREE.LineBasicMaterial({ 
+                                    color: entity.color || 0xffffff,
+                                    linewidth: 1 
+                                });
+                                
+                                const line = new THREE.Line(geometry, material);
+                                group.add(line);
+                                entityCount++;
+                            }
+                        } catch (e) {
+                            logToConsole(`  ⚠️ 엔티티 ${index} 처리 실패: ${e.message}`, 'warn');
+                        }
+                    });
+                }
+                
+                scene.add(group);
+                logToConsole(`✓ ${entityCount}개 엔티티 렌더링 완료`, 'success');
+                
+                // Bounding Box 계산 및 Fit to View
+                const box = new THREE.Box3().setFromObject(group);
+                if (!box.isEmpty()) {
+                    const center = box.getCenter(new THREE.Vector3());
+                    const size = box.getSize(new THREE.Vector3());
+                    
+                    logToConsole(`  중심: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)})`, 'info');
+                    logToConsole(`  크기: ${size.x.toFixed(2)} × ${size.y.toFixed(2)}`, 'info');
+                    
+                    const maxDim = Math.max(size.x, size.y);
+                    const viewSize = maxDim * 0.6;
+                    const aspect = canvas.clientWidth / canvas.clientHeight;
+                    
+                    camera.left = -viewSize * aspect;
+                    camera.right = viewSize * aspect;
+                    camera.top = viewSize;
+                    camera.bottom = -viewSize;
+                    camera.position.set(center.x, center.y, 100);
+                    camera.updateProjectionMatrix();
+                    
+                    logToConsole('✓ 카메라 조정 완료 (Fit to View)', 'success');
+                }
+                
+                // 렌더링
+                renderer.render(scene, camera);
+                logToConsole('✓ 최종 렌더링 완료', 'success');
+                
+            } catch (error) {
+                logToConsole('❌ 렌더링 실패: ' + error.message, 'error');
+                throw error;
+            }
+        }
+
+        // 전체 테스트 실행
+        async function testAll() {
+            clearConsole();
+            logToConsole('🚀 전체 테스트 시작', 'info');
+            await testLibraries();
+            logToConsole('💡 DXF 파일을 선택하여 파싱 테스트를 진행하세요.', 'info');
+        }
+
+        // 시스템 정보
+        function displaySystemInfo() {
+            const info = {
+                'User Agent': navigator.userAgent,
+                'Platform': navigator.platform,
+                'Browser': getBrowserInfo(),
+                'Screen': `${window.screen.width}x${window.screen.height}`,
+                'Window': `${window.innerWidth}x${window.innerHeight}`,
+                'WebGL': isWebGLAvailable() ? '지원됨' : '미지원',
+                'LocalStorage': typeof(Storage) !== 'undefined' ? '지원됨' : '미지원',
+                'ServiceWorker': 'serviceWorker' in navigator ? '지원됨' : '미지원',
+                'Cache API': 'caches' in window ? '지원됨' : '미지원',
+                'Current Time': new Date().toLocaleString('ko-KR')
+            };
+            
+            document.getElementById('systemInfo').textContent = 
+                JSON.stringify(info, null, 2);
+        }
+
+        function getBrowserInfo() {
+            const ua = navigator.userAgent;
+            if (ua.indexOf('Chrome') > -1) return 'Chrome';
+            if (ua.indexOf('Safari') > -1) return 'Safari';
+            if (ua.indexOf('Firefox') > -1) return 'Firefox';
+            if (ua.indexOf('MSIE') > -1 || ua.indexOf('Trident') > -1) return 'IE';
+            return 'Unknown';
+        }
+
+        function isWebGLAvailable() {
+            try {
+                const canvas = document.createElement('canvas');
+                return !!(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'));
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // 드래그 앤 드롭
+        const fileUpload = document.querySelector('.file-upload');
+        
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.style.borderColor = '#2196F3';
+            fileUpload.style.background = '#e3f2fd';
+        });
+        
+        fileUpload.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            fileUpload.style.borderColor = '#ccc';
+            fileUpload.style.background = 'transparent';
+        });
+        
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.style.borderColor = '#ccc';
+            fileUpload.style.background = 'transparent';
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.dxf')) {
+                loadDxfFile(file);
+            } else {
+                logToConsole('❌ DXF 파일만 지원합니다.', 'error');
+            }
+        });
+
+        // 페이지 로드 시 자동 실행
+        window.addEventListener('load', () => {
+            logToConsole('🎉 테스트 페이지 로드 완료', 'success');
+            displaySystemInfo();
+            setTimeout(testLibraries, 1000);
+        });
+
+        // 에러 캐치
+        window.addEventListener('error', (event) => {
+            logToConsole('🔴 전역 에러: ' + event.message, 'error');
+            logToConsole('  파일: ' + event.filename, 'error');
+            logToConsole('  라인: ' + event.lineno + ':' + event.colno, 'error');
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            logToConsole('🔴 Promise 에러: ' + event.reason, 'error');
+        });
+    </script>
+</body>
+</html>
+
