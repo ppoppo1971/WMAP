@@ -500,6 +500,91 @@
         .photo-modal-buttons .btn {
             flex: 1;
         }
+
+        /* 화면 전환 관리 */
+        .screen {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 60px);
+        }
+
+        .screen.hidden {
+            display: none;
+        }
+
+        /* 파일 목록 화면 */
+        .screen-header {
+            padding: 20px;
+            background: white;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .screen-header h2 {
+            font-size: 20px;
+            margin: 0;
+        }
+
+        .file-list-actions {
+            padding: 15px;
+            background: white;
+            display: flex;
+            gap: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .file-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f5f5f5;
+        }
+
+        .file-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .file-item:active {
+            transform: scale(0.98);
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .file-item-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: #007AFF;
+            margin-bottom: 5px;
+        }
+
+        .file-item-date {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .file-list-footer {
+            padding: 15px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .info-text {
+            text-align: center;
+            color: #999;
+            padding: 40px 20px;
+            font-size: 15px;
+        }
+
+        .loading-text {
+            text-align: center;
+            color: #007AFF;
+            padding: 40px 20px;
+            font-size: 15px;
+        }
     </style>
 </head>
 <body>
@@ -508,30 +593,50 @@
             <h1>📐 DXF 도면 편집기</h1>
         </div>
 
-        <div class="toolbar">
-            <!-- Google Drive 버튼 추가 -->
-            <button class="btn" id="google-drive-btn" onclick="showDrivePicker()" disabled style="background: #4285F4;">
-                📂 로그인 중...
-            </button>
+        <!-- 파일 선택 화면 -->
+        <div id="file-list-screen" class="screen">
+            <div class="screen-header">
+                <h2>📁 DXF 도면 선택</h2>
+            </div>
             
-            <label for="dxf-input" class="btn">💾 로컬 DXF</label>
-            <input type="file" id="dxf-input" accept=".dxf">
+            <div class="file-list-actions">
+                <button class="btn" id="login-btn" style="background: #4285F4;">
+                    🔐 Google Drive 로그인
+                </button>
+                <button class="btn hidden" id="refresh-files-btn" style="background: #34C759;">
+                    🔄 새로고침
+                </button>
+            </div>
             
-            <label for="photo-input" class="btn btn-secondary" id="add-photo-btn" disabled>사진 추가</label>
-            <input type="file" id="photo-input" accept="image/*" capture="environment">
+            <div id="file-list" class="file-list">
+                <p class="info-text">Google Drive에 로그인하여 DXF 파일을 선택하세요.</p>
+            </div>
             
-            <!-- ZIP 내보내기 버튼 제거 (Google Drive 자동 저장 사용) -->
-            <button class="btn" id="fit-btn" disabled style="background: #FF9500;">전체보기</button>
+            <div class="file-list-footer">
+                <label for="dxf-input" class="btn btn-secondary">💾 로컬 파일 열기</label>
+                <input type="file" id="dxf-input" accept=".dxf">
+            </div>
         </div>
 
-        <div class="canvas-container" id="canvas-container">
+        <!-- 도면 뷰어 화면 -->
+        <div id="viewer-screen" class="screen hidden">
+            <div class="toolbar">
+                <button class="btn" id="back-to-list-btn">◀ 목록</button>
+                <button class="btn" id="fit-btn" style="background: #FF9500;">전체보기</button>
+                <label for="photo-input" class="btn btn-secondary" id="add-photo-btn">📷 사진</label>
+                <input type="file" id="photo-input" accept="image/*" capture="environment">
+            </div>
+
+            <div class="canvas-container" id="canvas-container">
             <svg id="svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white;"></svg>
             <canvas id="canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
             <div class="zoom-controls">
                 <button class="zoom-btn" id="zoom-in">+</button>
                 <button class="zoom-btn" id="zoom-out">−</button>
             </div>
+            </div>
         </div>
+    </div>
     </div>
 
     <!-- 롱프레스 컨텍스트 메뉴 -->
@@ -682,10 +787,8 @@
         loadAllLibraries();
     </script>
     
-    <!-- Google API 스크립트 -->
-    <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-    <script src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
-    <script src="https://apis.google.com/js/api.js?onload=onApiLoad"></script>
+    <!-- Google Identity Services (간단한 방식) -->
+    <script src="https://accounts.google.com/gsi/client" async defer onload="initGoogleDrive()"></script>
     
     <!-- Google Drive 모듈 -->
     <script src="google-drive.js"></script>

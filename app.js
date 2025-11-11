@@ -9,6 +9,10 @@ if (typeof DxfParser === 'undefined') {
 // DXF 도면 편집기 앱
 class DxfPhotoEditor {
     constructor() {
+        // 화면 요소
+        this.fileListScreen = document.getElementById('file-list-screen');
+        this.viewerScreen = document.getElementById('viewer-screen');
+        
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
         this.svg = document.getElementById('svg');
@@ -227,9 +231,27 @@ class DxfPhotoEditor {
     }
     
     setupEventListeners() {
-        // DXF 파일 열기
+        // Google Drive 로그인 버튼
+        document.getElementById('login-btn').addEventListener('click', async () => {
+            await this.handleLogin();
+        });
+        
+        // 새로고침 버튼
+        document.getElementById('refresh-files-btn').addEventListener('click', async () => {
+            await this.loadFileList();
+        });
+        
+        // 목록으로 돌아가기
+        document.getElementById('back-to-list-btn').addEventListener('click', () => {
+            this.showFileList();
+        });
+        
+        // DXF 파일 열기 (로컬)
         document.getElementById('dxf-input').addEventListener('change', (e) => {
-            this.loadDxfFile(e.target.files[0]);
+            if (e.target.files[0]) {
+                this.loadDxfFile(e.target.files[0]);
+                this.showViewer();
+            }
         });
         
         // 사진 추가
@@ -530,6 +552,141 @@ class DxfPhotoEditor {
         this.autoSave();
     }
     
+    /**
+     * 화면 전환: 파일 목록 표시
+     */
+    showFileList() {
+        this.fileListScreen.classList.remove('hidden');
+        this.viewerScreen.classList.add('hidden');
+    }
+    
+    /**
+     * 화면 전환: 뷰어 표시
+     */
+    showViewer() {
+        this.fileListScreen.classList.add('hidden');
+        this.viewerScreen.classList.remove('hidden');
+    }
+    
+    /**
+     * Google Drive 로그인 처리
+     */
+    async handleLogin() {
+        try {
+            this.showLoading(true);
+            
+            if (!window.driveManager) {
+                throw new Error('Google Drive Manager가 초기화되지 않았습니다');
+            }
+            
+            // 인증 요청
+            await window.authenticateGoogleDrive();
+            
+            this.showLoading(false);
+            
+            // 로그인 성공 후 파일 목록 로드
+            await this.loadFileList();
+            
+        } catch (error) {
+            this.showLoading(false);
+            console.error('로그인 실패:', error);
+            alert('로그인에 실패했습니다.\n\n' + error.message);
+        }
+    }
+    
+    /**
+     * DXF 파일 목록 로드
+     */
+    async loadFileList() {
+        try {
+            this.showLoading(true);
+            
+            if (!window.listDxfFiles) {
+                throw new Error('Google Drive가 초기화되지 않았습니다');
+            }
+            
+            const files = await window.listDxfFiles();
+            
+            this.showLoading(false);
+            
+            // UI 업데이트
+            this.renderFileList(files);
+            
+            // 로그인 버튼 숨기고 새로고침 버튼 표시
+            document.getElementById('login-btn').classList.add('hidden');
+            document.getElementById('refresh-files-btn').classList.remove('hidden');
+            
+        } catch (error) {
+            this.showLoading(false);
+            console.error('파일 목록 로드 실패:', error);
+            alert('파일 목록을 불러오는데 실패했습니다.\n\n다시 로그인해주세요.');
+            
+            // 다시 로그인 버튼 표시
+            document.getElementById('login-btn').classList.remove('hidden');
+            document.getElementById('refresh-files-btn').classList.add('hidden');
+        }
+    }
+    
+    /**
+     * 파일 목록 UI 렌더링
+     */
+    renderFileList(files) {
+        const fileListDiv = document.getElementById('file-list');
+        
+        if (files.length === 0) {
+            fileListDiv.innerHTML = '<p class="info-text">📭 DXF 파일이 없습니다.<br><br>Google Drive 폴더에 DXF 파일을 업로드하세요.</p>';
+            return;
+        }
+        
+        fileListDiv.innerHTML = '';
+        
+        files.forEach(file => {
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+                <div class="file-item-name">📐 ${file.name}</div>
+                <div class="file-item-date">수정: ${new Date(file.modifiedTime).toLocaleString('ko-KR')}</div>
+            `;
+            
+            fileItem.addEventListener('click', async () => {
+                await this.openDxfFromDrive(file);
+            });
+            
+            fileListDiv.appendChild(fileItem);
+        });
+    }
+    
+    /**
+     * Google Drive에서 DXF 파일 열기
+     */
+    async openDxfFromDrive(file) {
+        try {
+            this.showLoading(true);
+            
+            // 파일 다운로드
+            const fileContent = await window.downloadDxfFile(file.id);
+            
+            // DXF 파싱
+            this.loadDxfFromText(fileContent, file.name);
+            
+            // 현재 파일 정보 저장
+            window.currentDriveFile = {
+                id: file.id,
+                name: file.name
+            };
+            
+            // 뷰어 화면으로 전환
+            this.showViewer();
+            
+            this.showLoading(false);
+            
+        } catch (error) {
+            this.showLoading(false);
+            console.error('파일 열기 실패:', error);
+            alert('파일을 여는데 실패했습니다: ' + error.message);
+        }
+    }
+    
     showLoading(show) {
         document.getElementById('loading').classList.toggle('active', show);
     }
@@ -684,11 +841,9 @@ class DxfPhotoEditor {
         this.fitDxfToView();
         this.redraw();
         
-        // 버튼 활성화
-        document.getElementById('add-photo-btn').disabled = false;
-        document.getElementById('fit-btn').disabled = false;
+        // 버튼은 항상 활성화 상태 (disabled 속성 제거)
         
-        alert(`DXF 파일이 로드되었습니다!\n엔티티 개수: ${this.dxfData.entities ? this.dxfData.entities.length : 0}개`);
+        console.log(`✅ DXF 로드 완료: ${this.dxfData.entities ? this.dxfData.entities.length : 0}개 엔티티`);
     }
     
     fitDxfToView() {
@@ -1653,15 +1808,17 @@ class DxfPhotoEditor {
      */
     autoSave() {
         // Google Drive에 데이터 저장 (비동기)
-        if (typeof window.autoSaveToDrive === 'function') {
+        if (typeof window.saveToDrive === 'function' && window.currentDriveFile) {
             const appData = {
                 photos: this.photos,
                 texts: this.texts
             };
             
-            window.autoSaveToDrive(appData).catch(error => {
+            window.saveToDrive(appData, window.currentDriveFile.name).catch(error => {
                 console.error('자동 저장 실패:', error);
             });
+        } else {
+            console.warn('⚠️ Google Drive 저장 건너뜀 (로컬 파일 또는 로그인 안 됨)');
         }
     }
     

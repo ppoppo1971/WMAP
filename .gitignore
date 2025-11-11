@@ -1,23 +1,36 @@
-# Node
+# Node modules (개발 시 사용)
 node_modules/
-npm-debug.log
-yarn-error.log
-package-lock.json
 
-# OS
+# OS 파일
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Editor
+# IDE 파일
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Temp
+# 로그 파일
+*.log
+npm-debug.log*
+
+# 임시 파일
 *.tmp
 *.temp
 
-# 주의: libs 폴더는 포함시켜야 함 (GitHub Pages에서 사용)
-# !libs/
+# 참조 폴더 (배포 불필요)
+참조/
 
+# 개발 중 테스트 파일
+test/
+*.test.js
+
+# 환경 변수 (실제 사용 시)
+.env
+.env.local
+
+# 빌드 결과물 (해당 없음)
+dist/
+build/
