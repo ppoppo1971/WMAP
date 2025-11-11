@@ -1,179 +1,142 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>DMAP - 도면 뷰어</title>
-    
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="manifest.json">
-    
-    <!-- 파비콘 -->
-    <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="apple-touch-icon" href="icon-192.png">
-    
-    <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8">
+  <title>DXF 뷰어 (iOS 지원)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- three.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <!-- OrbitControls -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.min.js"></script>
+  <!-- dxf-parser CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.0.1/dist/dxf-parser.min.js"></script>
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+    canvas { display:block; width:100%; height:100%; }
+    #fileInput {
+      position: absolute;
+      top: 10px; left: 10px;
+      background: white;
+      padding: 8px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      z-index: 10;
+    }
+  </style>
 </head>
 <body>
-    <!-- 로딩 오버레이 -->
-    <div id="loadingOverlay" class="overlay">
-        <div class="spinner"></div>
-        <p>로딩 중...</p>
-    </div>
+  <input type="file" id="fileInput" accept=".dxf" />
+  <script>
+    let scene, camera, renderer, controls;
 
-    <!-- 메인 컨테이너 -->
-    <div id="app" class="hidden">
-        <!-- 헤더 -->
-        <header>
-            <div class="header-left">
-                <button id="backBtn" class="icon-btn hidden">
-                    <span>◀</span>
-                </button>
-                <h1 id="appTitle">DMAP</h1>
-            </div>
-            <div class="header-right">
-                <button id="userBtn" class="icon-btn">
-                    <span id="userIcon">👤</span>
-                </button>
-            </div>
-        </header>
+    init();
 
-        <!-- 파일 목록 화면 -->
-        <div id="fileListScreen" class="screen">
-            <div class="screen-header">
-                <h2>📁 DXF 도면 목록</h2>
-                <button id="refreshBtn" class="btn-secondary">🔄 새로고침</button>
-            </div>
-            <div id="fileList" class="file-list">
-                <p class="loading-text">파일 목록을 불러오는 중...</p>
-            </div>
-        </div>
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf5f5f5);
 
-        <!-- DXF 뷰어 화면 -->
-        <div id="viewerScreen" class="screen hidden">
-            <!-- 도구 모음 -->
-            <div id="toolbar" class="toolbar">
-                <button id="fitViewBtn" class="tool-btn" title="전체보기">
-                    <span>🔲</span>
-                </button>
-                <button id="addPhotoBtn" class="tool-btn" title="사진 추가">
-                    <span>📷</span>
-                </button>
-                <button id="addTextBtn" class="tool-btn" title="텍스트 추가">
-                    <span>📝</span>
-                </button>
-                <button id="saveBtn" class="tool-btn primary" title="저장">
-                    <span>💾</span>
-                </button>
-            </div>
+      const width = window.innerWidth;
+      const height = window.innerHeight;
 
-            <!-- DXF 뷰어 캔버스 -->
-            <div id="viewerContainer">
-                <canvas id="viewerCanvas"></canvas>
-                <!-- 어노테이션 오버레이 (사진 이모지, 텍스트 표시) -->
-                <div id="annotationLayer"></div>
-            </div>
+      camera = new THREE.OrthographicCamera(
+        width / -100, width / 100,
+        height / 100, height / -100,
+        1, 1000
+      );
+      camera.position.set(0, 0, 100);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(width, height);
+      document.body.appendChild(renderer.domElement);
 
-            <!-- 롱프레스 메뉴 -->
-            <div id="contextMenu" class="context-menu hidden">
-                <button id="menuPhotoBtn" class="menu-item">
-                    📷 사진 추가
-                </button>
-                <button id="menuTextBtn" class="menu-item">
-                    📝 텍스트 추가
-                </button>
-                <button id="menuCancelBtn" class="menu-item cancel">
-                    ❌ 취소
-                </button>
-            </div>
-        </div>
-    </div>
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enablePan = true;
+      controls.enableZoom = true;
 
-    <!-- 사진 입력 모달 -->
-    <div id="photoModal" class="modal hidden">
-        <div class="modal-content">
-            <h3>사진 추가</h3>
-            <div class="photo-options">
-                <button id="takePictureBtn" class="btn-primary">
-                    📸 사진 촬영
-                </button>
-                <button id="selectPictureBtn" class="btn-primary">
-                    🖼️ 갤러리에서 선택
-                </button>
-            </div>
-            <div id="photoPreview" class="photo-preview hidden">
-                <img id="previewImage" alt="미리보기">
-                <textarea id="photoMemo" placeholder="메모를 입력하세요..." rows="3"></textarea>
-                <div class="modal-actions">
-                    <button id="confirmPhotoBtn" class="btn-primary">확인</button>
-                    <button id="cancelPhotoBtn" class="btn-secondary">취소</button>
-                </div>
-            </div>
-        </div>
-    </div>
+      window.addEventListener('resize', onWindowResize, false);
+      animate();
+    }
 
-    <!-- 텍스트 입력 모달 -->
-    <div id="textModal" class="modal hidden">
-        <div class="modal-content">
-            <h3>텍스트 추가</h3>
-            <textarea id="textInput" placeholder="텍스트를 입력하세요..." rows="4"></textarea>
-            <div class="modal-actions">
-                <button id="confirmTextBtn" class="btn-primary">확인</button>
-                <button id="cancelTextBtn" class="btn-secondary">취소</button>
-            </div>
-        </div>
-    </div>
+    function onWindowResize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      camera.left = width / -100;
+      camera.right = width / 100;
+      camera.top = height / 100;
+      camera.bottom = height / -100;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height);
+    }
 
-    <!-- 이미지 뷰어 모달 -->
-    <div id="imageViewerModal" class="modal hidden">
-        <div class="modal-content image-viewer">
-            <button id="closeImageBtn" class="close-btn">✕</button>
-            <img id="fullImage" alt="전체 이미지">
-            <p id="imageMemo" class="image-memo"></p>
-        </div>
-    </div>
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
 
-    <!-- 숨겨진 파일 입력 -->
-    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
-    <input type="file" id="galleryInput" accept="image/*" style="display:none">
+    // 📂 DXF 파일 선택 이벤트
+    document.getElementById('fileInput').addEventListener('change', handleFile, false);
 
-    <!-- 외부 라이브러리 -->
-    <!-- Three.js - 메인 3D 라이브러리 -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js" 
-            crossorigin="anonymous"
-            onerror="console.error('Three.js 로드 실패')"></script>
-    
-    <!-- three-dxf - DXF 파서 (여러 CDN 대안) -->
-    <script src="https://cdn.jsdelivr.net/npm/three-dxf@3.1.6/dist/three-dxf.umd.js" 
-            crossorigin="anonymous"
-            onerror="console.error('three-dxf jsdelivr 실패, unpkg 시도 중...'); loadThreeDxfFallback()"></script>
-    
-    <!-- Google Identity Services -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    
-    <!-- Fallback 로더 -->
-    <script>
-        // three-dxf 대체 CDN 로드
-        function loadThreeDxfFallback() {
-            console.log('대체 CDN에서 three-dxf 로드 시도...');
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/three-dxf@3.1.6/dist/three-dxf.umd.js';
-            script.crossOrigin = 'anonymous';
-            script.onerror = function() {
-                console.error('모든 CDN에서 three-dxf 로드 실패');
-                alert('DXF 라이브러리를 로드할 수 없습니다.\n인터넷 연결을 확인하거나 나중에 다시 시도하세요.');
-            };
-            script.onload = function() {
-                console.log('✓ 대체 CDN에서 three-dxf 로드 성공');
-            };
-            document.head.appendChild(script);
+    function handleFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parser = new DxfParser();
+          const dxf = parser.parseSync(e.target.result);
+          renderDxf(dxf);
+        } catch (err) {
+          alert('DXF 파싱 오류: ' + err.message);
         }
-    </script>
-    
-    <!-- 앱 스크립트 -->
-    <script type="module" src="app.js"></script>
+      };
+      reader.readAsText(file);
+    }
+
+    function renderDxf(data) {
+      // 이전 객체 제거
+      while(scene.children.length > 0){ scene.remove(scene.children[0]); }
+
+      const group = new THREE.Group();
+      const material = new THREE.LineBasicMaterial({ color: 0x000000 });
+
+      data.entities.forEach(ent => {
+        switch (ent.type) {
+          case 'LINE':
+            const geometry = new THREE.BufferGeometry().setFromPoints([
+              new THREE.Vector3(ent.vertices[0].x, ent.vertices[0].y, ent.vertices[0].z || 0),
+              new THREE.Vector3(ent.vertices[1].x, ent.vertices[1].y, ent.vertices[1].z || 0)
+            ]);
+            const line = new THREE.Line(geometry, material);
+            group.add(line);
+            break;
+          case 'LWPOLYLINE':
+          case 'POLYLINE':
+            if (!ent.vertices || ent.vertices.length < 2) break;
+            const points = ent.vertices.map(v => new THREE.Vector3(v.x, v.y, v.z || 0));
+            const polyGeo = new THREE.BufferGeometry().setFromPoints(points);
+            const polyLine = new THREE.Line(polyGeo, material);
+            group.add(polyLine);
+            break;
+        }
+      });
+
+      scene.add(group);
+      fitToView(group);
+    }
+
+    // 도면 전체 보기
+    function fitToView(object3d) {
+      const box = new THREE.Box3().setFromObject(object3d);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y);
+      const scale = 1.1;
+
+      camera.position.set(center.x, center.y, 100);
+      controls.target.set(center.x, center.y, 0);
+      camera.zoom = (window.innerHeight / maxDim) * scale;
+      camera.updateProjectionMatrix();
+    }
+  </script>
 </body>
 </html>
-
