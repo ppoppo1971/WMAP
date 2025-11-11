@@ -221,12 +221,21 @@ class DxfPhotoEditor {
     setupCanvas() {
         const updateCanvasSize = () => {
             const rect = this.container.getBoundingClientRect();
-            this.canvas.width = rect.width;
-            this.canvas.height = rect.height;
-            this.redraw();
+            if (rect.width > 0 && rect.height > 0) {
+                this.canvas.width = rect.width;
+                this.canvas.height = rect.height;
+                
+                // dxfData가 있을 때만 redraw
+                if (this.dxfData) {
+                    this.redraw();
+                }
+            }
         };
         
+        // 초기 크기 설정 시도
         updateCanvasSize();
+        
+        // 윈도우 크기 변경 시 재계산
         window.addEventListener('resize', updateCanvasSize);
     }
     
@@ -239,8 +248,8 @@ class DxfPhotoEditor {
         // 로컬 저장소 버튼 (로컬 파일 선택)
         document.getElementById('local-file-input').addEventListener('change', async (e) => {
             if (e.target.files[0]) {
+                this.showViewer();  // 먼저 화면 전환
                 await this.loadDxfFile(e.target.files[0]);
-                this.showViewer();
                 e.target.value = ''; // 초기화
             }
         });
@@ -652,13 +661,13 @@ class DxfPhotoEditor {
      */
     async openDxfFromDrive(file) {
         try {
+            // 먼저 뷰어 화면으로 전환
+            this.showViewer();
+            
             this.showLoading(true);
             
             // 파일 다운로드
             const fileContent = await window.downloadDxfFile(file.id);
-            
-            // DXF 파싱
-            this.loadDxfFromText(fileContent, file.name);
             
             // 현재 파일 정보 저장
             window.currentDriveFile = {
@@ -666,8 +675,8 @@ class DxfPhotoEditor {
                 name: file.name
             };
             
-            // 뷰어 화면으로 전환
-            this.showViewer();
+            // DXF 파싱 및 렌더링
+            this.loadDxfFromText(fileContent, file.name);
             
             this.showLoading(false);
             
@@ -675,6 +684,9 @@ class DxfPhotoEditor {
             this.showLoading(false);
             console.error('파일 열기 실패:', error);
             alert('파일을 여는데 실패했습니다: ' + error.message);
+            
+            // 오류 시 다시 파일 목록으로
+            this.showFileList();
         }
     }
     
@@ -725,6 +737,13 @@ class DxfPhotoEditor {
      * @param {string} fileName - 파일 이름
      */
     _parseDxf(text, fileName) {
+        // 1. Canvas 크기 재설정 (화면 전환 후 크기가 달라질 수 있음)
+        const rect = this.container.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+            this.canvas.width = rect.width;
+            this.canvas.height = rect.height;
+        }
+        
         // 2. DXF 파일 유효성 검사
         if (!text.includes('SECTION') || !text.includes('ENTITIES')) {
             throw new Error('올바른 DXF 파일 형식이 아닙니다.');
@@ -973,6 +992,11 @@ class DxfPhotoEditor {
     }
     
     drawWelcomeScreen() {
+        // canvas 크기가 0이면 그리지 않음
+        if (this.canvas.width === 0 || this.canvas.height === 0) {
+            return;
+        }
+        
         this.ctx.fillStyle = '#f5f5f5';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
