@@ -254,9 +254,27 @@ class DxfPhotoEditor {
             }
         });
         
-        // 목록으로 돌아가기
-        document.getElementById('back-to-list-btn').addEventListener('click', () => {
+        // 햄버거 메뉴 토글
+        document.getElementById('hamburger-btn').addEventListener('click', () => {
+            this.toggleSlideMenu();
+        });
+        
+        // 메뉴 오버레이 클릭 시 메뉴 닫기
+        document.getElementById('menu-overlay').addEventListener('click', () => {
+            this.closeSlideMenu();
+        });
+        
+        // 슬라이딩 메뉴 - 목록으로 돌아가기
+        document.getElementById('menu-back-to-list').addEventListener('click', () => {
+            this.closeSlideMenu();
             this.showFileList();
+        });
+        
+        // 슬라이딩 메뉴 - 전체보기
+        document.getElementById('menu-fit-view').addEventListener('click', () => {
+            this.closeSlideMenu();
+            this.fitDxfToView();
+            this.redraw();
         });
         
         // 사진 추가 버튼 제거 (롱프레스로만 추가)
@@ -277,7 +295,7 @@ class DxfPhotoEditor {
         this.canvas.addEventListener('click', this.onCanvasClick.bind(this));
         this.canvas.style.pointerEvents = 'auto'; // 사진 클릭 위해 활성화
         
-        // 줌 버튼
+        // 줌 버튼 (좌측 하단 고정)
         document.getElementById('zoom-in').addEventListener('click', () => {
             this.zoom(1.2);
         });
@@ -286,12 +304,7 @@ class DxfPhotoEditor {
             this.zoom(0.8);
         });
         
-        // 전체보기 버튼
-        document.getElementById('fit-btn').addEventListener('click', () => {
-            console.log('🔍 전체보기 클릭');
-            this.fitDxfToView();
-            this.redraw();
-        });
+        // 전체보기는 슬라이딩 메뉴에서 처리됨
         
         // 메모 모달
         document.getElementById('close-memo').addEventListener('click', () => {
@@ -560,6 +573,7 @@ class DxfPhotoEditor {
     showFileList() {
         this.fileListScreen.classList.remove('hidden');
         this.viewerScreen.classList.add('hidden');
+        this.closeSlideMenu(); // 메뉴 닫기
     }
     
     /**
@@ -568,6 +582,38 @@ class DxfPhotoEditor {
     showViewer() {
         this.fileListScreen.classList.add('hidden');
         this.viewerScreen.classList.remove('hidden');
+    }
+    
+    /**
+     * 슬라이딩 메뉴 토글
+     */
+    toggleSlideMenu() {
+        const slideMenu = document.getElementById('slide-menu');
+        const overlay = document.getElementById('menu-overlay');
+        
+        const isActive = slideMenu.classList.contains('active');
+        
+        if (isActive) {
+            this.closeSlideMenu();
+        } else {
+            this.openSlideMenu();
+        }
+    }
+    
+    /**
+     * 슬라이딩 메뉴 열기
+     */
+    openSlideMenu() {
+        document.getElementById('slide-menu').classList.add('active');
+        document.getElementById('menu-overlay').classList.add('active');
+    }
+    
+    /**
+     * 슬라이딩 메뉴 닫기
+     */
+    closeSlideMenu() {
+        document.getElementById('slide-menu').classList.remove('active');
+        document.getElementById('menu-overlay').classList.remove('active');
     }
     
     /**
