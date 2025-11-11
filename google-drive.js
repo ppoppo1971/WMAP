@@ -109,9 +109,13 @@ class GoogleDriveManager {
         this.ensureAuthenticated();
 
         console.log('📂 DXF 파일 목록 조회 중...');
+        console.log('폴더 ID:', this.targetFolderId);
+        console.log('액세스 토큰:', this.accessToken ? '있음 (길이: ' + this.accessToken.length + ')' : '없음');
 
         const query = `'${this.targetFolderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`;
         const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,modifiedTime,mimeType)&orderBy=modifiedTime desc&key=${this.apiKey}`;
+
+        console.log('요청 URL:', url);
 
         const response = await fetch(url, {
             headers: {
@@ -119,11 +123,17 @@ class GoogleDriveManager {
             },
         });
 
+        console.log('응답 상태:', response.status, response.statusText);
+
         if (!response.ok) {
-            throw new Error(`파일 목록 가져오기 실패: ${response.statusText}`);
+            const errorText = await response.text();
+            console.error('API 오류 응답:', errorText);
+            throw new Error(`파일 목록 가져오기 실패: ${response.status} ${response.statusText}\n${errorText}`);
         }
 
         const data = await response.json();
+        
+        console.log('전체 파일 수:', data.files.length);
         
         // .dxf 파일만 필터링
         const dxfFiles = data.files.filter(file => 

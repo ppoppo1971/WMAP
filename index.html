@@ -579,7 +579,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택</h2>
+                <h2>📁 DXF 도면 선택0516</h2>
             </div>
             
             <div class="file-list-actions">
@@ -764,11 +764,11 @@
         loadAllLibraries();
     </script>
     
-    <!-- Google Identity Services (간단한 방식) -->
-    <script src="https://accounts.google.com/gsi/client" async defer onload="initGoogleDrive()"></script>
-    
-    <!-- Google Drive 모듈 -->
+    <!-- Google Drive 모듈 (먼저 로드) -->
     <script src="google-drive.js"></script>
+    
+    <!-- Google Identity Services (나중에 로드하여 initGoogleDrive 호출) -->
+    <script src="https://accounts.google.com/gsi/client" onload="initGoogleDrive()"></script>
     
     <!-- 앱 스크립트 (defer로 라이브러리 로드 후 실행) -->
     <script src="app.js" defer></script>

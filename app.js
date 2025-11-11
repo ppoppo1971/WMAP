@@ -578,11 +578,23 @@ class DxfPhotoEditor {
             this.showLoading(true);
             
             if (!window.driveManager) {
-                throw new Error('Google Drive Manager가 초기화되지 않았습니다');
+                throw new Error('Google Drive Manager가 초기화되지 않았습니다.\n\n페이지를 새로고침해주세요.');
             }
             
+            console.log('🔑 로그인 시도 중...');
+            
             // 인증 요청
-            await window.authenticateGoogleDrive();
+            const success = await window.authenticateGoogleDrive();
+            
+            if (!success) {
+                throw new Error('인증에 실패했습니다');
+            }
+            
+            console.log('✅ 로그인 성공');
+            console.log('액세스 토큰:', window.driveManager.accessToken ? '있음' : '없음');
+            
+            // 토큰 설정을 위해 짧은 대기
+            await new Promise(resolve => setTimeout(resolve, 500));
             
             this.showLoading(false);
             
@@ -591,8 +603,8 @@ class DxfPhotoEditor {
             
         } catch (error) {
             this.showLoading(false);
-            console.error('로그인 실패:', error);
-            alert('로그인에 실패했습니다.\n\n' + error.message);
+            console.error('❌ 로그인 실패:', error);
+            alert('로그인에 실패했습니다.\n\n' + error.message + '\n\n브라우저 팝업 차단을 해제하고 다시 시도해주세요.');
         }
     }
     
@@ -603,11 +615,21 @@ class DxfPhotoEditor {
         try {
             this.showLoading(true);
             
+            console.log('📂 파일 목록 로드 시작...');
+            console.log('driveManager 존재:', !!window.driveManager);
+            console.log('accessToken 존재:', !!window.driveManager?.accessToken);
+            
             if (!window.listDxfFiles) {
-                throw new Error('Google Drive가 초기화되지 않았습니다');
+                throw new Error('Google Drive가 초기화되지 않았습니다.\n\n페이지를 새로고침해주세요.');
+            }
+            
+            if (!window.driveManager || !window.driveManager.accessToken) {
+                throw new Error('로그인이 필요합니다.\n\n먼저 로그인 버튼을 클릭해주세요.');
             }
             
             const files = await window.listDxfFiles();
+            
+            console.log('✅ 파일 목록 로드 성공:', files.length + '개');
             
             this.showLoading(false);
             
@@ -616,14 +638,18 @@ class DxfPhotoEditor {
             
             // 로그인 버튼 텍스트 변경
             document.getElementById('login-btn').textContent = '✅ 로그인됨';
+            document.getElementById('login-btn').style.background = '#34C759';
             
         } catch (error) {
             this.showLoading(false);
-            console.error('파일 목록 로드 실패:', error);
-            alert('파일 목록을 불러오는데 실패했습니다.\n\n다시 로그인해주세요.');
+            console.error('❌ 파일 목록 로드 실패:', error);
+            console.error('상세 오류:', error.message);
+            
+            alert('파일 목록을 불러오는데 실패했습니다.\n\n' + error.message + '\n\n다시 로그인해주세요.');
             
             // 다시 로그인 버튼 텍스트 원래대로
             document.getElementById('login-btn').textContent = '🔐 Google Drive';
+            document.getElementById('login-btn').style.background = '#4285F4';
         }
     }
     
@@ -1946,7 +1972,28 @@ class DxfPhotoEditor {
 
 // 앱 시작
 let app;
-document.addEventListener('DOMContentLoaded', () => {
+
+// Google Drive 준비 대기 후 앱 시작
+async function startApp() {
+    console.log('📱 앱 시작...');
+    
+    // Google Drive Manager가 준비될 때까지 대기 (최대 5초)
+    let retries = 0;
+    while (!window.driveManager && retries < 50) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        retries++;
+    }
+    
+    if (window.driveManager) {
+        console.log('✅ Google Drive Manager 준비됨');
+    } else {
+        console.warn('⚠️ Google Drive Manager 초기화 대기 시간 초과');
+    }
+    
+    // 앱 인스턴스 생성
     app = new DxfPhotoEditor();
-});
+    console.log('✅ DXF Photo Editor 초기화 완료');
+}
+
+document.addEventListener('DOMContentLoaded', startApp);
 
