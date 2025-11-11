@@ -14,6 +14,12 @@ class DxfPhotoEditor {
         this.viewerScreen = document.getElementById('viewer-screen');
         this.viewerUI = document.getElementById('viewer-ui');
         
+        console.log('📱 요소 확인:', {
+            fileListScreen: !!this.fileListScreen,
+            viewerScreen: !!this.viewerScreen,
+            viewerUI: !!this.viewerUI
+        });
+        
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
         this.svg = document.getElementById('svg');
@@ -582,9 +588,17 @@ class DxfPhotoEditor {
      * 화면 전환: 뷰어 표시
      */
     showViewer() {
+        console.log('🖼️ 뷰어 화면으로 전환');
+        
         this.fileListScreen.classList.add('hidden');
         this.viewerScreen.classList.remove('hidden');
-        this.viewerUI.classList.remove('hidden'); // UI 버튼들 표시
+        
+        if (this.viewerUI) {
+            this.viewerUI.classList.remove('hidden'); // UI 버튼들 표시
+            console.log('✅ 뷰어 UI 표시');
+        } else {
+            console.error('❌ viewerUI 요소를 찾을 수 없음!');
+        }
     }
     
     /**

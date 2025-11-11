@@ -250,22 +250,28 @@
             display: none;
         }
 
-        /* 뷰어 UI 컨테이너 (버튼들) */
+        /* 뷰어 UI 컨테이너 (버튼들) - 최상위 레이어 */
         .viewer-ui {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
+            z-index: 1000;
         }
         
         .viewer-ui.hidden {
-            display: none;
+            display: none !important;
         }
         
         .viewer-ui > * {
             pointer-events: auto;
         }
 
-        /* 햄버거 메뉴 (우측 상단 고정) */
+        /* 햄버거 메뉴 (우측 상단) */
         .hamburger-btn {
-            position: fixed;
+            position: absolute;
             top: 20px;
             right: 20px;
             width: 56px;
@@ -277,7 +283,6 @@
             font-size: 28px;
             cursor: pointer;
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-            z-index: 500;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -347,15 +352,14 @@
             display: block;
         }
 
-        /* 확대/축소 버튼 (좌측 하단 고정) */
+        /* 확대/축소 버튼 (좌측 하단) */
         .zoom-controls-fixed {
-            position: fixed;
+            position: absolute;
             bottom: 20px;
             left: 20px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            z-index: 500;
         }
 
         .zoom-btn {
@@ -689,7 +693,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택0531</h2>
+                <h2>📁 DXF 도면 선택0538</h2>
             </div>
             
             <div class="file-list-actions">
@@ -714,19 +718,19 @@
                 <canvas id="canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
             </div>
         </div>
+    </div>
+    
+    <!-- 뷰어 화면 UI - body 직접 자식 (최상위 레이어) -->
+    <div id="viewer-ui" class="viewer-ui hidden">
+        <!-- 햄버거 메뉴 (우측 상단 고정) -->
+        <button class="hamburger-btn" id="hamburger-btn">
+            <span>☰</span>
+        </button>
         
-        <!-- 뷰어 화면 UI (canvas-container 밖에 배치 - 고정 위치) -->
-        <div id="viewer-ui" class="viewer-ui hidden">
-            <!-- 햄버거 메뉴 (우측 상단 고정) -->
-            <button class="hamburger-btn" id="hamburger-btn">
-                <span>☰</span>
-            </button>
-            
-            <!-- 확대/축소 버튼 (좌측 하단 고정) -->
-            <div class="zoom-controls-fixed">
-                <button class="zoom-btn" id="zoom-in">+</button>
-                <button class="zoom-btn" id="zoom-out">−</button>
-            </div>
+        <!-- 확대/축소 버튼 (좌측 하단 고정) -->
+        <div class="zoom-controls-fixed">
+            <button class="zoom-btn" id="zoom-in">+</button>
+            <button class="zoom-btn" id="zoom-out">−</button>
         </div>
     </div>
     
