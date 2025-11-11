@@ -361,6 +361,8 @@
 
     <!-- Three.js 라이브러리 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- DXF 파서 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/dxf-parser@1.3.0/dist/dxf-parser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three-dxf@3.2.2/dist/three-dxf.min.js"></script>
 
     <script>
@@ -500,9 +502,14 @@
 
         function parseDXF(dxfString) {
             try {
-                // three-dxf 라이브러리를 사용하여 파싱
-                const parser = new window.DxfParser();
+                // dxf-parser 라이브러리를 사용하여 파싱
+                console.log('DXF 파싱 시작...');
+                console.log('DxfParser 사용 가능:', typeof DxfParser);
+                
+                const parser = new DxfParser();
                 const dxf = parser.parseSync(dxfString);
+                
+                console.log('DXF 파싱 완료:', dxf);
                 return dxf;
             } catch (error) {
                 console.error('DXF 파싱 실패:', error);
@@ -511,19 +518,32 @@
         }
 
         function renderDXF(dxf) {
-            // 기존 DXF 객체 제거
-            scene.children = scene.children.filter(child => 
-                child instanceof THREE.Light || child.userData.type === 'annotation'
-            );
-            
-            // DXF 데이터를 Three.js 객체로 변환
-            const helper = new window.ThreeDxf.Helper(dxf);
-            const entity = helper.toObject();
-            
-            scene.add(entity);
-            
-            // 전체 보기로 카메라 조정
-            fitToView();
+            try {
+                console.log('DXF 렌더링 시작...');
+                console.log('ThreeDxf 사용 가능:', typeof window.ThreeDxf);
+                
+                // 기존 DXF 객체 제거
+                scene.children = scene.children.filter(child => 
+                    child instanceof THREE.Light || child.userData.type === 'annotation'
+                );
+                
+                // DXF 데이터를 Three.js 객체로 변환
+                const helper = new window.ThreeDxf.Helper(dxf);
+                const entity = helper.toObject();
+                
+                console.log('DXF 객체 생성 완료:', entity);
+                
+                scene.add(entity);
+                
+                // 전체 보기로 카메라 조정
+                fitToView();
+                
+                console.log('DXF 렌더링 완료');
+            } catch (error) {
+                console.error('DXF 렌더링 실패:', error);
+                alert(`도면 렌더링에 실패했습니다.\n\n오류: ${error.message}`);
+                throw error;
+            }
         }
 
         // ========================================
@@ -1110,6 +1130,19 @@
             console.log('앱 초기화 시작...');
             
             try {
+                // 라이브러리 로드 확인
+                console.log('THREE 로드 상태:', typeof THREE);
+                console.log('DxfParser 로드 상태:', typeof DxfParser);
+                console.log('ThreeDxf 로드 상태:', typeof window.ThreeDxf);
+                
+                if (typeof DxfParser === 'undefined') {
+                    throw new Error('DxfParser 라이브러리가 로드되지 않았습니다.');
+                }
+                
+                if (typeof window.ThreeDxf === 'undefined') {
+                    throw new Error('ThreeDxf 라이브러리가 로드되지 않았습니다.');
+                }
+                
                 // Three.js 초기화
                 initThreeJS();
                 
