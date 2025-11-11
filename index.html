@@ -29,20 +29,6 @@
             height: 100vh;
         }
 
-        .header {
-            background: #007AFF;
-            color: white;
-            padding: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .header h1 {
-            font-size: 18px;
-            font-weight: 600;
-        }
 
         .toolbar {
             background: white;
@@ -51,7 +37,8 @@
             gap: 10px;
             overflow-x: auto;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
+            align-items: center;
         }
 
         .btn {
@@ -505,7 +492,7 @@
         .screen {
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 60px);
+            height: 100vh;
         }
 
         .screen.hidden {
@@ -589,10 +576,6 @@
 </head>
 <body>
     <div class="app-container">
-        <div class="header">
-            <h1>📐 DXF 도면 편집기</h1>
-        </div>
-
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
@@ -601,20 +584,16 @@
             
             <div class="file-list-actions">
                 <button class="btn" id="login-btn" style="background: #4285F4;">
-                    🔐 Google Drive 로그인
+                    🔐 Google Drive
                 </button>
-                <button class="btn hidden" id="refresh-files-btn" style="background: #34C759;">
-                    🔄 새로고침
-                </button>
+                <label for="local-file-input" class="btn" id="local-storage-btn" style="background: #34C759;">
+                    💾 로컬 저장소
+                </label>
+                <input type="file" id="local-file-input" accept=".dxf" style="display: none;">
             </div>
             
             <div id="file-list" class="file-list">
-                <p class="info-text">Google Drive에 로그인하여 DXF 파일을 선택하세요.</p>
-            </div>
-            
-            <div class="file-list-footer">
-                <label for="dxf-input" class="btn btn-secondary">💾 로컬 파일 열기</label>
-                <input type="file" id="dxf-input" accept=".dxf">
+                <p class="info-text">Google Drive에 로그인하여 DXF 파일을 선택하세요.<br><br>또는 로컬 저장소에서 파일을 선택하세요.</p>
             </div>
         </div>
 
@@ -622,9 +601,7 @@
         <div id="viewer-screen" class="screen hidden">
             <div class="toolbar">
                 <button class="btn" id="back-to-list-btn">◀ 목록</button>
-                <button class="btn" id="fit-btn" style="background: #FF9500;">전체보기</button>
-                <label for="photo-input" class="btn btn-secondary" id="add-photo-btn">📷 사진</label>
-                <input type="file" id="photo-input" accept="image/*" capture="environment">
+                <button class="btn" id="fit-btn" style="background: #FF9500;">🔲 전체보기</button>
             </div>
 
             <div class="canvas-container" id="canvas-container">

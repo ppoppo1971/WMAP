@@ -236,9 +236,13 @@ class DxfPhotoEditor {
             await this.handleLogin();
         });
         
-        // 새로고침 버튼
-        document.getElementById('refresh-files-btn').addEventListener('click', async () => {
-            await this.loadFileList();
+        // 로컬 저장소 버튼 (로컬 파일 선택)
+        document.getElementById('local-file-input').addEventListener('change', async (e) => {
+            if (e.target.files[0]) {
+                await this.loadDxfFile(e.target.files[0]);
+                this.showViewer();
+                e.target.value = ''; // 초기화
+            }
         });
         
         // 목록으로 돌아가기
@@ -246,18 +250,7 @@ class DxfPhotoEditor {
             this.showFileList();
         });
         
-        // DXF 파일 열기 (로컬)
-        document.getElementById('dxf-input').addEventListener('change', (e) => {
-            if (e.target.files[0]) {
-                this.loadDxfFile(e.target.files[0]);
-                this.showViewer();
-            }
-        });
-        
-        // 사진 추가
-        document.getElementById('photo-input').addEventListener('change', (e) => {
-            this.addPhoto(e.target.files[0]);
-        });
+        // 사진 추가 버튼 제거 (롱프레스로만 추가)
         
         // 내보내기 버튼 제거됨 (Google Drive 자동 저장 사용)
         
@@ -612,18 +605,16 @@ class DxfPhotoEditor {
             // UI 업데이트
             this.renderFileList(files);
             
-            // 로그인 버튼 숨기고 새로고침 버튼 표시
-            document.getElementById('login-btn').classList.add('hidden');
-            document.getElementById('refresh-files-btn').classList.remove('hidden');
+            // 로그인 버튼 텍스트 변경
+            document.getElementById('login-btn').textContent = '✅ 로그인됨';
             
         } catch (error) {
             this.showLoading(false);
             console.error('파일 목록 로드 실패:', error);
             alert('파일 목록을 불러오는데 실패했습니다.\n\n다시 로그인해주세요.');
             
-            // 다시 로그인 버튼 표시
-            document.getElementById('login-btn').classList.remove('hidden');
-            document.getElementById('refresh-files-btn').classList.add('hidden');
+            // 다시 로그인 버튼 텍스트 원래대로
+            document.getElementById('login-btn').textContent = '🔐 Google Drive';
         }
     }
     
@@ -719,6 +710,7 @@ class DxfPhotoEditor {
             const text = await file.text();
             
             this._parseDxf(text, file.name);
+            
         } catch (error) {
             console.error('DXF 파일 로드 오류:', error);
             alert('DXF 파일을 여는데 실패했습니다.');
