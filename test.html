@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DMAP 라이브러리 테스트</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            padding: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            background: #f5f5f5;
+        }
+        .status {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .success { color: #4caf50; }
+        .error { color: #f44336; }
+        .pending { color: #ff9800; }
+        h1 { color: #2196f3; }
+        button {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:active {
+            background: #1976d2;
+        }
+        #log {
+            background: #333;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 DMAP 라이브러리 테스트</h1>
+    
+    <div class="status">
+        <h3>네트워크 상태</h3>
+        <p id="networkStatus" class="pending">확인 중...</p>
+    </div>
+    
+    <div class="status">
+        <h3>라이브러리 로딩 상태</h3>
+        <p id="threeStatus" class="pending">⏳ Three.js: 로딩 중...</p>
+        <p id="dxfStatus" class="pending">⏳ DxfParser: 로딩 중...</p>
+    </div>
+    
+    <div class="status">
+        <h3>CDN 테스트</h3>
+        <button onclick="testCDN('https://unpkg.com/three@0.150.1/build/three.min.js')">unpkg 테스트</button>
+        <button onclick="testCDN('https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js')">jsdelivr 테스트</button>
+        <button onclick="testCDN('https://cdnjs.cloudflare.com/ajax/libs/three.js/r150/three.min.js')">cdnjs 테스트</button>
+    </div>
+    
+    <div class="status">
+        <h3>액션</h3>
+        <button onclick="location.reload()">🔄 새로고침</button>
+        <button onclick="clearCache()">🗑️ 캐시 삭제</button>
+        <button onclick="window.open('index.html')">🚀 메인 앱 열기</button>
+    </div>
+    
+    <div class="status">
+        <h3>로그</h3>
+        <div id="log">초기화 중...\n</div>
+    </div>
+
+    <script>
+        // 로그 함수
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : '📝';
+            logDiv.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        // 네트워크 상태 확인
+        function checkNetwork() {
+            const status = document.getElementById('networkStatus');
+            if (navigator.onLine) {
+                status.textContent = '✅ 온라인';
+                status.className = 'success';
+                log('네트워크 연결: 온라인', 'success');
+            } else {
+                status.textContent = '❌ 오프라인';
+                status.className = 'error';
+                log('네트워크 연결: 오프라인', 'error');
+            }
+        }
+
+        // CDN 테스트
+        async function testCDN(url) {
+            log(`CDN 테스트 시작: ${url}`);
+            const startTime = Date.now();
+            
+            try {
+                const response = await fetch(url, { method: 'HEAD' });
+                const elapsed = Date.now() - startTime;
+                
+                if (response.ok) {
+                    log(`✅ CDN 응답 성공: ${elapsed}ms`, 'success');
+                    alert(`✅ 성공!\n${url}\n응답 시간: ${elapsed}ms`);
+                } else {
+                    log(`❌ CDN 응답 실패: ${response.status}`, 'error');
+                    alert(`❌ 실패!\n상태 코드: ${response.status}`);
+                }
+            } catch (error) {
+                log(`❌ CDN 연결 실패: ${error.message}`, 'error');
+                alert(`❌ 연결 실패!\n${error.message}`);
+            }
+        }
+
+        // 캐시 삭제
+        function clearCache() {
+            if (confirm('브라우저 캐시를 삭제하고 페이지를 새로고침하시겠습니까?')) {
+                // Service Worker 캐시 삭제
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => {
+                            caches.delete(name);
+                        });
+                    });
+                }
+                log('캐시 삭제 완료', 'success');
+                location.reload(true);
+            }
+        }
+
+        // Three.js 로딩
+        log('Three.js 로딩 시작...');
+        const threeScript = document.createElement('script');
+        threeScript.src = 'https://unpkg.com/three@0.150.1/build/three.min.js';
+        threeScript.onload = function() {
+            document.getElementById('threeStatus').textContent = '✅ Three.js: 로드 완료';
+            document.getElementById('threeStatus').className = 'success';
+            log(`Three.js 로드 완료 (버전: ${window.THREE?.REVISION || '알 수 없음'})`, 'success');
+            
+            // DxfParser 로딩
+            loadDxfParser();
+        };
+        threeScript.onerror = function() {
+            document.getElementById('threeStatus').textContent = '❌ Three.js: 로드 실패';
+            document.getElementById('threeStatus').className = 'error';
+            log('Three.js 로드 실패 - CDN 차단 또는 네트워크 문제', 'error');
+        };
+        document.head.appendChild(threeScript);
+
+        // DxfParser 로딩
+        function loadDxfParser() {
+            log('DxfParser 로딩 시작...');
+            const dxfScript = document.createElement('script');
+            dxfScript.src = 'https://unpkg.com/dxf-parser@1.5.0/dist/dxf-parser.min.js';
+            dxfScript.onload = function() {
+                document.getElementById('dxfStatus').textContent = '✅ DxfParser: 로드 완료';
+                document.getElementById('dxfStatus').className = 'success';
+                log('DxfParser 로드 완료', 'success');
+                
+                // 모든 라이브러리 로드 완료
+                log('🎉 모든 라이브러리 로딩 완료!', 'success');
+                alert('✅ 모든 라이브러리가 정상적으로 로드되었습니다!\n메인 앱(index.html)을 사용할 수 있습니다.');
+            };
+            dxfScript.onerror = function() {
+                document.getElementById('dxfStatus').textContent = '❌ DxfParser: 로드 실패';
+                document.getElementById('dxfStatus').className = 'error';
+                log('DxfParser 로드 실패 - CDN 차단 또는 네트워크 문제', 'error');
+            };
+            document.head.appendChild(dxfScript);
+        }
+
+        // 초기화
+        checkNetwork();
+        window.addEventListener('online', checkNetwork);
+        window.addEventListener('offline', checkNetwork);
+
+        log('테스트 페이지 초기화 완료');
+    </script>
+</body>
+</html>
+

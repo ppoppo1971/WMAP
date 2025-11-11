@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>DMAP - 도면 뷰어0202</title>
+    <title>DMAP - 도면 뷰어</title>
     
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json">
@@ -139,16 +139,48 @@
     <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
     <input type="file" id="galleryInput" accept="image/*" style="display:none">
 
-    <!-- 외부 라이브러리 (순차적 로딩) -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <script src="https://unpkg.com/dxf-parser@1.5.0/dist/dxf-parser.min.js"></script>
+    <!-- 외부 라이브러리 (동기적 순차 로딩) -->
+    <script>
+        // 로딩 상태 표시
+        console.log('🔄 라이브러리 로딩 시작...');
+        
+        // 라이브러리 로딩 완료 체크
+        window.librariesLoaded = {
+            three: false,
+            dxfParser: false,
+            gsi: false
+        };
+        
+        function checkAllLoaded() {
+            if (window.librariesLoaded.three && 
+                window.librariesLoaded.dxfParser) {
+                console.log('✅ 모든 필수 라이브러리 로딩 완료');
+                // 앱 로딩
+                const script = document.createElement('script');
+                script.type = 'module';
+                script.src = 'app.js';
+                document.body.appendChild(script);
+            }
+        }
+    </script>
+    
+    <!-- Three.js -->
+    <script src="https://unpkg.com/three@0.150.1/build/three.min.js" 
+            onload="console.log('✅ Three.js 로드 완료'); window.librariesLoaded.three = true; checkAllLoaded();"
+            onerror="console.error('❌ Three.js 로드 실패'); alert('Three.js 로딩 실패. 인터넷 연결을 확인하세요.');">
+    </script>
+    
+    <!-- DXF Parser -->
+    <script src="https://unpkg.com/dxf-parser@1.5.0/dist/dxf-parser.min.js"
+            onload="console.log('✅ DxfParser 로드 완료'); window.librariesLoaded.dxfParser = true; checkAllLoaded();"
+            onerror="console.error('❌ DxfParser 로드 실패'); alert('DxfParser 로딩 실패. 인터넷 연결을 확인하세요.');">
+    </script>
     
     <!-- Google Identity Services -->
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
-    
-    <!-- 앱 스크립트 -->
-    <script type="module" src="app.js"></script>
+    <script src="https://accounts.google.com/gsi/client" 
+            async defer
+            onload="console.log('✅ Google Identity Services 로드 완료'); window.librariesLoaded.gsi = true;">
+    </script>
 </body>
 </html>
-
 

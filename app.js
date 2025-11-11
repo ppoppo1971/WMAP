@@ -59,7 +59,18 @@ class DmapApp {
      * 필수 라이브러리 로딩 대기
      */
     async waitForLibraries() {
-        const maxWait = 30000; // 최대 30초 대기
+        // 이미 HTML에서 onload로 확인했으므로 즉시 확인
+        if (window.THREE && window.DxfParser) {
+            console.log('✅ 라이브러리 확인 완료');
+            console.log('- Three.js:', window.THREE.REVISION);
+            console.log('- DxfParser:', typeof window.DxfParser);
+            return Promise.resolve();
+        }
+
+        // 혹시 모를 경우를 대비한 폴백
+        console.log('⏳ 라이브러리 로딩 대기 중...');
+        
+        const maxWait = 10000; // 10초만 대기 (이미 HTML에서 로드됨)
         const startTime = Date.now();
 
         return new Promise((resolve, reject) => {
@@ -68,9 +79,9 @@ class DmapApp {
             const checkLibraries = setInterval(() => {
                 checkCount++;
                 
-                // 로딩 상태 로그 (5초마다)
-                if (checkCount % 50 === 0) {
-                    console.log('라이브러리 로딩 중...', {
+                // 로딩 상태 로그 (2초마다)
+                if (checkCount % 20 === 0) {
+                    console.log('⏳ 대기 중...', {
                         THREE: !!window.THREE,
                         DxfParser: !!window.DxfParser,
                         elapsed: Date.now() - startTime
@@ -81,8 +92,6 @@ class DmapApp {
                 if (window.THREE && window.DxfParser) {
                     clearInterval(checkLibraries);
                     console.log('✅ 라이브러리 로딩 완료');
-                    console.log('- Three.js:', window.THREE.REVISION);
-                    console.log('- DxfParser:', typeof window.DxfParser);
                     resolve();
                     return;
                 }
@@ -99,12 +108,17 @@ class DmapApp {
                     };
                     
                     console.error('❌ 라이브러리 로딩 실패:', errorInfo);
+                    console.error('📡 네트워크 상태:', navigator.onLine ? '온라인' : '오프라인');
                     
                     reject(new Error(
-                        '라이브러리 로딩 시간 초과\n' +
+                        '라이브러리를 불러올 수 없습니다.\n\n' +
                         `THREE.js: ${errorInfo.THREE ? '✓' : '✗'}\n` +
-                        `DxfParser: ${errorInfo.DxfParser ? '✓' : '✗'}\n` +
-                        '인터넷 연결을 확인하고 페이지를 새로고침하세요.'
+                        `DxfParser: ${errorInfo.DxfParser ? '✗'}\n\n` +
+                        '해결 방법:\n' +
+                        '1. 인터넷 연결 확인\n' +
+                        '2. 페이지 새로고침 (Ctrl+R)\n' +
+                        '3. 캐시 삭제 후 재시도\n' +
+                        '4. 다른 네트워크에서 시도'
                     ));
                 }
             }, 100);
