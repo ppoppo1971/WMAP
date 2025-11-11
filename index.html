@@ -140,11 +140,37 @@
     <input type="file" id="galleryInput" accept="image/*" style="display:none">
 
     <!-- 외부 라이브러리 -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three-dxf@3.1.6/dist/three-dxf.umd.js"></script>
+    <!-- Three.js - 메인 3D 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js" 
+            crossorigin="anonymous"
+            onerror="console.error('Three.js 로드 실패')"></script>
+    
+    <!-- three-dxf - DXF 파서 (여러 CDN 대안) -->
+    <script src="https://cdn.jsdelivr.net/npm/three-dxf@3.1.6/dist/three-dxf.umd.js" 
+            crossorigin="anonymous"
+            onerror="console.error('three-dxf jsdelivr 실패, unpkg 시도 중...'); loadThreeDxfFallback()"></script>
     
     <!-- Google Identity Services -->
     <script src="https://accounts.google.com/gsi/client" async defer></script>
+    
+    <!-- Fallback 로더 -->
+    <script>
+        // three-dxf 대체 CDN 로드
+        function loadThreeDxfFallback() {
+            console.log('대체 CDN에서 three-dxf 로드 시도...');
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/three-dxf@3.1.6/dist/three-dxf.umd.js';
+            script.crossOrigin = 'anonymous';
+            script.onerror = function() {
+                console.error('모든 CDN에서 three-dxf 로드 실패');
+                alert('DXF 라이브러리를 로드할 수 없습니다.\n인터넷 연결을 확인하거나 나중에 다시 시도하세요.');
+            };
+            script.onload = function() {
+                console.log('✓ 대체 CDN에서 three-dxf 로드 성공');
+            };
+            document.head.appendChild(script);
+        }
+    </script>
     
     <!-- 앱 스크립트 -->
     <script type="module" src="app.js"></script>

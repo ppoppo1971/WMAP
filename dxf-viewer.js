@@ -88,21 +88,62 @@ class DxfViewer {
                 this.scene.remove(this.dxfGroup);
             }
 
+            // three-dxf 라이브러리 확인
+            if (typeof window.ThreeDxf === 'undefined') {
+                throw new Error('three-dxf 라이브러리가 로드되지 않았습니다.\n' +
+                    '인터넷 연결을 확인하거나 페이지를 새로고침하세요.\n\n' +
+                    '문제가 계속되면 test.html에서 진단을 실행하세요.');
+            }
+
+            console.log('DXF 파싱 시작... (길이:', dxfString.length, '문자)');
+
             // three-dxf 파서 사용
             const parser = new window.ThreeDxf.Parser();
-            this.dxfData = parser.parseSync(dxfString);
+            
+            // 파싱 타임아웃 설정 (큰 파일의 경우)
+            const parsePromise = new Promise((resolve, reject) => {
+                try {
+                    const result = parser.parseSync(dxfString);
+                    resolve(result);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('파싱 시간 초과 (30초)')), 30000);
+            });
+
+            this.dxfData = await Promise.race([parsePromise, timeoutPromise]);
+            
+            console.log('✓ DXF 파싱 완료');
+            console.log('  엔티티 수:', this.dxfData.entities ? this.dxfData.entities.length : 0);
 
             // DXF를 Three.js 객체로 변환
             this.dxfGroup = new THREE.Group();
             
+            let entityCount = 0;
             // 모든 레이어 추가
             if (this.dxfData && this.dxfData.entities) {
-                this.dxfData.entities.forEach(entity => {
-                    const mesh = this.createEntityMesh(entity);
-                    if (mesh) {
-                        this.dxfGroup.add(mesh);
+                this.dxfData.entities.forEach((entity, index) => {
+                    try {
+                        const mesh = this.createEntityMesh(entity);
+                        if (mesh) {
+                            this.dxfGroup.add(mesh);
+                            entityCount++;
+                        }
+                    } catch (e) {
+                        console.warn(`엔티티 ${index} 처리 실패:`, e.message);
                     }
                 });
+            }
+
+            console.log('✓ 엔티티 렌더링 완료:', entityCount, '개');
+
+            if (entityCount === 0) {
+                console.warn('⚠️ 렌더링된 엔티티가 없습니다.');
+                console.warn('  DXF 파일에 지원되지 않는 엔티티만 있을 수 있습니다.');
+                console.warn('  지원: LINE, LWPOLYLINE, POLYLINE, CIRCLE, ARC, TEXT 등');
             }
 
             this.scene.add(this.dxfGroup);
@@ -110,10 +151,22 @@ class DxfViewer {
             // 전체 보기로 조정
             this.fitToView();
 
-            console.log('DXF 로드 완료:', this.dxfData);
+            console.log('✓ DXF 로드 완료');
         } catch (error) {
-            console.error('DXF 로드 실패:', error);
-            throw error;
+            console.error('❌ DXF 로드 실패:', error);
+            
+            // 사용자 친화적 에러 메시지
+            if (error.message.includes('three-dxf')) {
+                throw new Error('DXF 라이브러리를 로드할 수 없습니다.\n' +
+                    '인터넷 연결을 확인하고 페이지를 새로고침하세요.');
+            } else if (error.message.includes('시간 초과')) {
+                throw new Error('파일이 너무 큽니다.\n' +
+                    '더 작은 파일로 시도하거나 파일을 단순화하세요.');
+            } else {
+                throw new Error('DXF 파일을 읽을 수 없습니다.\n' +
+                    '파일이 손상되었거나 지원되지 않는 버전일 수 있습니다.\n\n' +
+                    '상세 오류: ' + error.message);
+            }
         }
     }
 
