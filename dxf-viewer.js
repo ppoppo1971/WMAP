@@ -88,28 +88,36 @@ class DxfViewer {
                 this.scene.remove(this.dxfGroup);
             }
 
-            // dxf-parser 라이브러리 확인
-            if (!window.DxfParser) {
-                throw new Error('DXF 파서 라이브러리가 로드되지 않았습니다.');
+            // three-dxf 라이브러리 확인
+            if (!window.ThreeDxf) {
+                throw new Error('Three-DXF 라이브러리가 로드되지 않았습니다.');
             }
 
-            // DXF 파싱
-            const parser = new window.DxfParser();
-            this.dxfData = parser.parseSync(dxfString);
+            console.log('DXF 파싱 시작...');
 
+            // Three-DXF로 파싱 및 렌더링
+            const helper = new window.ThreeDxf.Helper(dxfString);
+            
+            // DXF 데이터 가져오기
+            this.dxfData = helper.parsed;
             console.log('DXF 파싱 완료:', this.dxfData);
 
-            // DXF를 Three.js 객체로 변환
-            this.dxfGroup = new THREE.Group();
+            // Three.js 객체로 변환
+            this.dxfGroup = helper.group;
             
-            // 엔티티 렌더링
-            if (this.dxfData && this.dxfData.entities) {
-                this.dxfData.entities.forEach(entity => {
-                    const mesh = this.createEntityMesh(entity);
-                    if (mesh) {
-                        this.dxfGroup.add(mesh);
-                    }
-                });
+            // 그룹이 비어있으면 수동으로 엔티티 생성
+            if (!this.dxfGroup || this.dxfGroup.children.length === 0) {
+                console.log('자동 변환 실패, 수동 변환 시도...');
+                this.dxfGroup = new THREE.Group();
+                
+                if (this.dxfData && this.dxfData.entities) {
+                    this.dxfData.entities.forEach(entity => {
+                        const mesh = this.createEntityMesh(entity);
+                        if (mesh) {
+                            this.dxfGroup.add(mesh);
+                        }
+                    });
+                }
             }
 
             this.scene.add(this.dxfGroup);
@@ -117,10 +125,10 @@ class DxfViewer {
             // 전체 보기로 조정
             this.fitToView();
 
-            console.log('DXF 로드 완료, 엔티티 수:', this.dxfGroup.children.length);
+            console.log('✅ DXF 로드 완료, 엔티티 수:', this.dxfGroup.children.length);
         } catch (error) {
-            console.error('DXF 로드 실패:', error);
-            throw error;
+            console.error('❌ DXF 로드 실패:', error);
+            throw new Error(`DXF 파일을 열 수 없습니다: ${error.message}`);
         }
     }
 

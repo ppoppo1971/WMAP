@@ -60,10 +60,10 @@ class DmapApp {
      */
     async waitForLibraries() {
         // 이미 HTML에서 onload로 확인했으므로 즉시 확인
-        if (window.THREE && window.DxfParser) {
+        if (window.THREE && window.ThreeDxf) {
             console.log('✅ 라이브러리 확인 완료');
             console.log('- Three.js:', window.THREE.REVISION);
-            console.log('- DxfParser:', typeof window.DxfParser);
+            console.log('- Three-DXF:', typeof window.ThreeDxf);
             return Promise.resolve();
         }
 
@@ -83,13 +83,13 @@ class DmapApp {
                 if (checkCount % 20 === 0) {
                     console.log('⏳ 대기 중...', {
                         THREE: !!window.THREE,
-                        DxfParser: !!window.DxfParser,
+                        ThreeDxf: !!window.ThreeDxf,
                         elapsed: Date.now() - startTime
                     });
                 }
 
-                // Three.js와 DxfParser 확인
-                if (window.THREE && window.DxfParser) {
+                // Three.js와 ThreeDxf 확인
+                if (window.THREE && window.ThreeDxf) {
                     clearInterval(checkLibraries);
                     console.log('✅ 라이브러리 로딩 완료');
                     resolve();
@@ -103,7 +103,7 @@ class DmapApp {
                     // 상세한 오류 정보
                     const errorInfo = {
                         THREE: !!window.THREE,
-                        DxfParser: !!window.DxfParser,
+                        ThreeDxf: !!window.ThreeDxf,
                         elapsed: Date.now() - startTime
                     };
                     
@@ -113,12 +113,12 @@ class DmapApp {
                     reject(new Error(
                         '라이브러리를 불러올 수 없습니다.\n\n' +
                         `THREE.js: ${errorInfo.THREE ? '✓' : '✗'}\n` +
-                        `DxfParser: ${errorInfo.DxfParser ? '✗'}\n\n` +
+                        `Three-DXF: ${errorInfo.ThreeDxf ? '✗'}\n\n` +
                         '해결 방법:\n' +
                         '1. 인터넷 연결 확인\n' +
                         '2. 페이지 새로고침 (Ctrl+R)\n' +
                         '3. 캐시 삭제 후 재시도\n' +
-                        '4. 다른 네트워크에서 시도'
+                        '4. test.html에서 진단 실행'
                     ));
                 }
             }, 100);

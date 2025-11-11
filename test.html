@@ -60,14 +60,14 @@
     <div class="status">
         <h3>라이브러리 로딩 상태</h3>
         <p id="threeStatus" class="pending">⏳ Three.js: 로딩 중...</p>
-        <p id="dxfStatus" class="pending">⏳ DxfParser: 로딩 중...</p>
+        <p id="dxfStatus" class="pending">⏳ Three-DXF: 로딩 중...</p>
     </div>
     
     <div class="status">
         <h3>CDN 테스트</h3>
-        <button onclick="testCDN('https://unpkg.com/three@0.150.1/build/three.min.js')">unpkg 테스트</button>
-        <button onclick="testCDN('https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js')">jsdelivr 테스트</button>
-        <button onclick="testCDN('https://cdnjs.cloudflare.com/ajax/libs/three.js/r150/three.min.js')">cdnjs 테스트</button>
+        <button onclick="testCDN('https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js')">Three.js (jsdelivr)</button>
+        <button onclick="testCDN('https://cdn.jsdelivr.net/npm/three-dxf@3.3.2/dist/three-dxf.umd.js')">Three-DXF (jsdelivr)</button>
+        <button onclick="testCDN('https://unpkg.com/three@0.150.1/build/three.min.js')">Three.js (unpkg)</button>
     </div>
     
     <div class="status">
@@ -148,14 +148,14 @@
         // Three.js 로딩
         log('Three.js 로딩 시작...');
         const threeScript = document.createElement('script');
-        threeScript.src = 'https://unpkg.com/three@0.150.1/build/three.min.js';
+        threeScript.src = 'https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js';
         threeScript.onload = function() {
             document.getElementById('threeStatus').textContent = '✅ Three.js: 로드 완료';
             document.getElementById('threeStatus').className = 'success';
             log(`Three.js 로드 완료 (버전: ${window.THREE?.REVISION || '알 수 없음'})`, 'success');
             
-            // DxfParser 로딩
-            loadDxfParser();
+            // Three-DXF 로딩
+            loadThreeDxf();
         };
         threeScript.onerror = function() {
             document.getElementById('threeStatus').textContent = '❌ Three.js: 로드 실패';
@@ -164,24 +164,24 @@
         };
         document.head.appendChild(threeScript);
 
-        // DxfParser 로딩
-        function loadDxfParser() {
-            log('DxfParser 로딩 시작...');
+        // Three-DXF 로딩
+        function loadThreeDxf() {
+            log('Three-DXF 로딩 시작...');
             const dxfScript = document.createElement('script');
-            dxfScript.src = 'https://unpkg.com/dxf-parser@1.5.0/dist/dxf-parser.min.js';
+            dxfScript.src = 'https://cdn.jsdelivr.net/npm/three-dxf@3.3.2/dist/three-dxf.umd.js';
             dxfScript.onload = function() {
-                document.getElementById('dxfStatus').textContent = '✅ DxfParser: 로드 완료';
+                document.getElementById('dxfStatus').textContent = '✅ Three-DXF: 로드 완료';
                 document.getElementById('dxfStatus').className = 'success';
-                log('DxfParser 로드 완료', 'success');
+                log('Three-DXF 로드 완료', 'success');
                 
                 // 모든 라이브러리 로드 완료
                 log('🎉 모든 라이브러리 로딩 완료!', 'success');
                 alert('✅ 모든 라이브러리가 정상적으로 로드되었습니다!\n메인 앱(index.html)을 사용할 수 있습니다.');
             };
             dxfScript.onerror = function() {
-                document.getElementById('dxfStatus').textContent = '❌ DxfParser: 로드 실패';
+                document.getElementById('dxfStatus').textContent = '❌ Three-DXF: 로드 실패';
                 document.getElementById('dxfStatus').className = 'error';
-                log('DxfParser 로드 실패 - CDN 차단 또는 네트워크 문제', 'error');
+                log('Three-DXF 로드 실패 - CDN 차단 또는 네트워크 문제', 'error');
             };
             document.head.appendChild(dxfScript);
         }

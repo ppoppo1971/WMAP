@@ -147,13 +147,13 @@
         // 라이브러리 로딩 완료 체크
         window.librariesLoaded = {
             three: false,
-            dxfParser: false,
+            threeDxf: false,
             gsi: false
         };
         
         function checkAllLoaded() {
             if (window.librariesLoaded.three && 
-                window.librariesLoaded.dxfParser) {
+                window.librariesLoaded.threeDxf) {
                 console.log('✅ 모든 필수 라이브러리 로딩 완료');
                 // 앱 로딩
                 const script = document.createElement('script');
@@ -165,15 +165,15 @@
     </script>
     
     <!-- Three.js -->
-    <script src="https://unpkg.com/three@0.150.1/build/three.min.js" 
+    <script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js" 
             onload="console.log('✅ Three.js 로드 완료'); window.librariesLoaded.three = true; checkAllLoaded();"
-            onerror="console.error('❌ Three.js 로드 실패'); alert('Three.js 로딩 실패. 인터넷 연결을 확인하세요.');">
+            onerror="console.error('❌ Three.js 로드 실패'); alert('Three.js 로딩 실패. 페이지를 새로고침하세요.');">
     </script>
     
-    <!-- DXF Parser -->
-    <script src="https://unpkg.com/dxf-parser@1.5.0/dist/dxf-parser.min.js"
-            onload="console.log('✅ DxfParser 로드 완료'); window.librariesLoaded.dxfParser = true; checkAllLoaded();"
-            onerror="console.error('❌ DxfParser 로드 실패'); alert('DxfParser 로딩 실패. 인터넷 연결을 확인하세요.');">
+    <!-- Three-DXF -->
+    <script src="https://cdn.jsdelivr.net/npm/three-dxf@3.3.2/dist/three-dxf.umd.js"
+            onload="console.log('✅ Three-DXF 로드 완료'); window.librariesLoaded.threeDxf = true; checkAllLoaded();"
+            onerror="console.error('❌ Three-DXF 로드 실패'); alert('Three-DXF 로딩 실패. 페이지를 새로고침하세요.');">
     </script>
     
     <!-- Google Identity Services -->
