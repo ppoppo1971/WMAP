@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>DXF 도면 뷰어</title>
+    <title>DXF 도면 뷰어1140</title>
     <style>
         * {
             margin: 0;
@@ -464,28 +464,55 @@
         // ========================================
         
         async function initGoogleAPI() {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
+                console.log('Google API 로드 시작...');
                 gapi.load('client:auth2', async () => {
-                    await gapi.client.init({
-                        apiKey: API_KEY,
-                        clientId: CLIENT_ID,
-                        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-                        scope: SCOPES
-                    });
-                    resolve();
+                    try {
+                        console.log('Google API 초기화 중...');
+                        console.log('Client ID:', CLIENT_ID);
+                        console.log('API Key:', API_KEY);
+                        
+                        await gapi.client.init({
+                            apiKey: API_KEY,
+                            clientId: CLIENT_ID,
+                            discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+                            scope: SCOPES
+                        });
+                        
+                        console.log('Google API 초기화 완료');
+                        
+                        // Drive API 활성화 확인
+                        const authInstance = gapi.auth2.getAuthInstance();
+                        console.log('Auth Instance 생성됨:', authInstance ? '성공' : '실패');
+                        
+                        resolve();
+                    } catch (error) {
+                        console.error('Google API 초기화 실패:', error);
+                        reject(error);
+                    }
                 });
             });
         }
 
         async function signIn() {
             try {
+                console.log('로그인 시도 중...');
                 const authInstance = gapi.auth2.getAuthInstance();
+                console.log('Auth Instance:', authInstance);
+                
                 const user = await authInstance.signIn();
+                console.log('로그인 성공:', user);
+                
                 accessToken = user.getAuthResponse().access_token;
+                console.log('Access Token 획득:', accessToken ? '성공' : '실패');
+                
                 return true;
             } catch (error) {
-                console.error('로그인 실패:', error);
-                alert('구글 로그인에 실패했습니다.');
+                console.error('로그인 실패 상세:', error);
+                console.error('에러 코드:', error.error);
+                console.error('에러 상세:', error.details);
+                
+                alert(`구글 로그인에 실패했습니다.\n\n에러: ${error.error || error.message || '알 수 없는 오류'}\n\n브라우저 콘솔(F12)에서 상세 내용을 확인하세요.`);
                 return false;
             }
         }
@@ -1076,10 +1103,25 @@
         
         async function openFile() {
             // 로그인 확인
-            const authInstance = gapi.auth2.getAuthInstance();
-            if (!authInstance.isSignedIn.get()) {
-                const success = await signIn();
-                if (!success) return;
+            try {
+                const authInstance = gapi.auth2.getAuthInstance();
+                
+                if (!authInstance) {
+                    alert('Google API가 초기화되지 않았습니다.\n페이지를 새로고침해주세요.');
+                    console.error('authInstance is null');
+                    return;
+                }
+                
+                console.log('현재 로그인 상태:', authInstance.isSignedIn.get());
+                
+                if (!authInstance.isSignedIn.get()) {
+                    const success = await signIn();
+                    if (!success) return;
+                }
+            } catch (error) {
+                console.error('파일 열기 오류:', error);
+                alert(`오류가 발생했습니다: ${error.message}`);
+                return;
             }
             
             showSpinner(true);
@@ -1235,14 +1277,37 @@
         // ========================================
         
         function loadGoogleAPI() {
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
+                // 이미 로드되어 있는지 확인
+                if (window.gapi) {
+                    console.log('Google API 이미 로드됨');
+                    initGoogleAPI().then(resolve).catch(reject);
+                    return;
+                }
+                
+                console.log('Google API 스크립트 로드 중...');
                 const script = document.createElement('script');
                 script.src = 'https://apis.google.com/js/api.js';
+                script.async = true;
+                script.defer = true;
+                
                 script.onload = async () => {
-                    await initGoogleAPI();
-                    resolve();
+                    console.log('Google API 스크립트 로드 완료');
+                    try {
+                        await initGoogleAPI();
+                        resolve();
+                    } catch (error) {
+                        console.error('Google API 초기화 중 오류:', error);
+                        reject(error);
+                    }
                 };
-                document.body.appendChild(script);
+                
+                script.onerror = (error) => {
+                    console.error('Google API 스크립트 로드 실패:', error);
+                    reject(new Error('Google API 스크립트를 불러올 수 없습니다.'));
+                };
+                
+                document.head.appendChild(script);
             });
         }
 
