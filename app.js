@@ -42,6 +42,7 @@ class DxfPhotoEditor {
         this.touchState = {
             isDragging: false,
             isPinching: false,
+            wasDragging: false,  // 터치 종료 후 클릭 이벤트 방지용
             startX: 0,
             startY: 0,
             lastTouch: null,  // { x, y } 객체로 관리
@@ -274,8 +275,19 @@ class DxfPhotoEditor {
         });
         
         // 햄버거 메뉴 토글
-        document.getElementById('hamburger-btn').addEventListener('click', () => {
+        const hamburgerBtn = document.getElementById('hamburger-btn');
+        
+        hamburgerBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.toggleSlideMenu();
+        });
+        
+        // 햄버거 버튼 터치 이벤트에서 롱프레스 방지
+        hamburgerBtn.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+        }, { passive: false });
+        hamburgerBtn.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
         });
         
         // 메뉴 오버레이 클릭 시 메뉴 닫기
@@ -284,16 +296,37 @@ class DxfPhotoEditor {
         });
         
         // 슬라이딩 메뉴 - 목록으로 돌아가기
-        document.getElementById('menu-back-to-list').addEventListener('click', () => {
+        const menuBackBtn = document.getElementById('menu-back-to-list');
+        const menuFitViewBtn = document.getElementById('menu-fit-view');
+        const menuClearCacheBtn = document.getElementById('menu-clear-cache');
+        
+        menuBackBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.closeSlideMenu();
             this.showFileList();
         });
         
-        // 슬라이딩 메뉴 - 전체보기
-        document.getElementById('menu-fit-view').addEventListener('click', () => {
+        menuFitViewBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.closeSlideMenu();
             this.fitDxfToView();
             this.redraw();
+        });
+        
+        menuClearCacheBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            this.closeSlideMenu();
+            await this.clearCacheAndReload();
+        });
+        
+        // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
+        [menuBackBtn, menuFitViewBtn, menuClearCacheBtn].forEach(btn => {
+            btn.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+            }, { passive: false });
+            btn.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+            });
         });
         
         // 사진 추가 버튼 제거 (롱프레스로만 추가)
@@ -314,12 +347,27 @@ class DxfPhotoEditor {
         this.svg.addEventListener('click', this.onCanvasClick.bind(this));
         
         // 줌 버튼 (좌측 하단 고정)
-        document.getElementById('zoom-in').addEventListener('click', () => {
+        const zoomInBtn = document.getElementById('zoom-in');
+        const zoomOutBtn = document.getElementById('zoom-out');
+        
+        zoomInBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.zoom(1.2);
         });
         
-        document.getElementById('zoom-out').addEventListener('click', () => {
+        zoomOutBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.zoom(0.8);
+        });
+        
+        // 줌 버튼 터치 이벤트에서 롱프레스 방지
+        [zoomInBtn, zoomOutBtn].forEach(btn => {
+            btn.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+            }, { passive: false });
+            btn.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+            });
         });
         
         // 전체보기는 슬라이딩 메뉴에서 처리됨
@@ -379,7 +427,8 @@ class DxfPhotoEditor {
         // 컨텍스트 메뉴 외부 클릭 시 닫기
         document.addEventListener('click', (e) => {
             const contextMenu = document.getElementById('context-menu');
-            if (!contextMenu.contains(e.target) && !e.target.closest('#svg')) {
+            // 컨텍스트 메뉴 자체를 클릭한 게 아니면 닫기
+            if (!contextMenu.contains(e.target)) {
                 this.hideContextMenu();
             }
         });
@@ -625,6 +674,69 @@ class DxfPhotoEditor {
     closeSlideMenu() {
         document.getElementById('slide-menu').classList.remove('active');
         document.getElementById('menu-overlay').classList.remove('active');
+    }
+    
+    /**
+     * 캐시 삭제 및 현재 도면 새로고침
+     */
+    async clearCacheAndReload() {
+        try {
+            console.log('🗑️ 캐시 삭제 시작...');
+            this.showLoading(true);
+            
+            // Service Worker 캐시 삭제
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                console.log(`📦 발견된 캐시: ${cacheNames.length}개`);
+                
+                for (const cacheName of cacheNames) {
+                    await caches.delete(cacheName);
+                    console.log(`✅ 캐시 삭제됨: ${cacheName}`);
+                }
+            }
+            
+            // 현재 도면 정보 저장
+            const currentDxfData = this.dxfData;
+            const currentPhotos = [...this.photos];
+            const currentViewBox = {...this.viewBox};
+            const currentFileName = this.currentFileName;
+            const currentFileId = this.currentFileId;
+            
+            console.log('💾 현재 도면 상태 저장 완료');
+            console.log(`  - 파일명: ${currentFileName}`);
+            console.log(`  - 사진 개수: ${currentPhotos.length}`);
+            
+            // 잠시 대기 (캐시 삭제 완료 확인)
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // 현재 도면 다시 로드
+            if (currentDxfData) {
+                console.log('🔄 도면 새로고침 중...');
+                
+                // 도면 정보 복원
+                this.dxfData = currentDxfData;
+                this.photos = currentPhotos;
+                this.viewBox = currentViewBox;
+                this.currentFileName = currentFileName;
+                this.currentFileId = currentFileId;
+                
+                // 화면 다시 그리기
+                this.redraw();
+                
+                console.log('✅ 캐시 삭제 및 새로고침 완료');
+                alert('캐시가 삭제되었습니다.');
+            } else {
+                console.log('⚠️ 현재 열린 도면이 없습니다.');
+                alert('캐시가 삭제되었습니다.');
+            }
+            
+            this.showLoading(false);
+            
+        } catch (error) {
+            console.error('❌ 캐시 삭제 실패:', error);
+            alert('캐시 삭제 중 오류가 발생했습니다.');
+            this.showLoading(false);
+        }
     }
     
     /**
@@ -1690,6 +1802,14 @@ class DxfPhotoEditor {
     }
     
     onMouseUp(e) {
+        // 드래그 중이었다면 wasDragging 플래그 설정 (클릭 이벤트 방지)
+        if (this.touchState.isDragging) {
+            this.touchState.wasDragging = true;
+            setTimeout(() => {
+                this.touchState.wasDragging = false;
+            }, 100);
+        }
+        
         this.touchState.isDragging = false;
         this.touchState.lastTouch = null;
         this.touchState.anchorView = null;
@@ -1830,6 +1950,14 @@ class DxfPhotoEditor {
                 this.isLongPress = false;
             }
             
+            // 드래그 중이었다면 wasDragging 플래그 설정 (클릭 이벤트 방지)
+            if (this.touchState.isDragging) {
+                this.touchState.wasDragging = true;
+                setTimeout(() => {
+                    this.touchState.wasDragging = false;
+                }, 100);
+            }
+            
             // 상태 리셋
             this.touchState.isDragging = false;
             this.touchState.isPinching = false;
@@ -1928,8 +2056,8 @@ class DxfPhotoEditor {
      * SVG 클릭 이벤트에서 호출됨
      */
     onCanvasClick(e) {
-        // 드래그 중이었으면 클릭으로 처리하지 않음
-        if (this.touchState.isDragging) {
+        // 드래그 중이거나 방금 드래그가 끝났으면 클릭으로 처리하지 않음
+        if (this.touchState.isDragging || this.touchState.wasDragging) {
             return;
         }
         
