@@ -44,8 +44,7 @@ class DxfPhotoEditor {
             isPinching: false,
             startX: 0,
             startY: 0,
-            lastX: 0,
-            lastY: 0,
+            lastTouch: null,  // { x, y } 객체로 관리
             startViewBox: null,
             lastPinchDistance: 0
         };
@@ -1615,14 +1614,13 @@ class DxfPhotoEditor {
         // 드래그 준비
         this.touchState.startX = e.clientX;
         this.touchState.startY = e.clientY;
-        this.touchState.lastX = e.clientX;
-        this.touchState.lastY = e.clientY;
+        this.touchState.lastTouch = { x: e.clientX, y: e.clientY };
         this.touchState.startViewBox = {...this.viewBox};
         this.touchState.isDragging = false; // 아직 시작 안함
     }
     
     onMouseMove(e) {
-        if (!this.touchState.startViewBox) return;
+        if (!this.touchState.lastTouch) return;
         
         // 이동 거리 계산 (롱프레스 취소 판단용)
         const moveDistance = Math.sqrt(
@@ -1636,13 +1634,13 @@ class DxfPhotoEditor {
             this.touchState.isDragging = true;
         }
         
-        // 드래그 처리 (이전 프레임과의 차이 사용 - 부드러운 이동)
+        // 드래그 처리
         if (this.touchState.isDragging) {
             const rect = this.svg.getBoundingClientRect();
             
             // 이전 프레임에서의 이동량 (delta)
-            const deltaX = e.clientX - this.touchState.lastX;
-            const deltaY = e.clientY - this.touchState.lastY;
+            const deltaX = e.clientX - this.touchState.lastTouch.x;
+            const deltaY = e.clientY - this.touchState.lastTouch.y;
             
             // ViewBox 좌표계로 변환
             const dx = deltaX * (this.viewBox.width / rect.width);
@@ -1652,9 +1650,8 @@ class DxfPhotoEditor {
             this.viewBox.x -= dx;
             this.viewBox.y -= dy;
             
-            // 현재 위치를 다음 프레임의 lastX/lastY로 저장
-            this.touchState.lastX = e.clientX;
-            this.touchState.lastY = e.clientY;
+            // 현재 위치 저장
+            this.touchState.lastTouch = { x: e.clientX, y: e.clientY };
             
             this.redraw();
         }
@@ -1662,6 +1659,7 @@ class DxfPhotoEditor {
     
     onMouseUp(e) {
         this.touchState.isDragging = false;
+        this.touchState.lastTouch = null;
         this.touchState.startViewBox = null;
     }
     
@@ -1686,8 +1684,7 @@ class DxfPhotoEditor {
             this.touchState.isPinching = false;
             this.touchState.startX = touch.clientX;
             this.touchState.startY = touch.clientY;
-            this.touchState.lastX = touch.clientX;
-            this.touchState.lastY = touch.clientY;
+            this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
             this.touchState.startViewBox = {...this.viewBox};
             
         } else if (touches.length === 2) {
@@ -1731,13 +1728,13 @@ class DxfPhotoEditor {
                 this.touchState.isDragging = true;
             }
             
-            // 단일 터치: 팬(드래그) - 증분 업데이트 방식
-            if (this.touchState.isDragging) {
+            // 단일 터치: 팬(드래그)
+            if (this.touchState.isDragging && this.touchState.lastTouch) {
                 const rect = this.svg.getBoundingClientRect();
                 
                 // 이전 프레임에서의 이동량 (delta)
-                const deltaX = touch.clientX - this.touchState.lastX;
-                const deltaY = touch.clientY - this.touchState.lastY;
+                const deltaX = touch.clientX - this.touchState.lastTouch.x;
+                const deltaY = touch.clientY - this.touchState.lastTouch.y;
                 
                 // ViewBox 좌표계로 변환
                 const dx = deltaX * (this.viewBox.width / rect.width);
@@ -1747,47 +1744,38 @@ class DxfPhotoEditor {
                 this.viewBox.x -= dx;
                 this.viewBox.y -= dy;
                 
-                // 현재 위치를 다음 프레임의 lastX/lastY로 저장
-                this.touchState.lastX = touch.clientX;
-                this.touchState.lastY = touch.clientY;
+                // 현재 위치 저장
+                this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
                 
                 this.redraw();
             }
             
         } else if (touches.length === 2 && this.touchState.isPinching) {
-            // 두 손가락: 핀치줌
+            // 두 손가락: 핀치줌 (중심점 기준)
             const touch1 = touches[0];
             const touch2 = touches[1];
             
             // 현재 거리
             const currentDistance = this.getTouchDistance(touch1, touch2);
             
-            if (this.touchState.lastPinchDistance > 0 && this.touchState.startViewBox) {
-                // 줌 비율 계산
-                const zoomRatio = this.touchState.lastPinchDistance / currentDistance;
+            if (this.touchState.lastPinchDistance > 0) {
+                // 거리 변화량 (delta)
+                const delta = currentDistance - this.touchState.lastPinchDistance;
                 
-                // 새로운 ViewBox 크기
-                const newWidth = this.viewBox.width * zoomRatio;
-                const newHeight = this.viewBox.height * zoomRatio;
+                // 핀치 중심점 계산 (두 손가락의 중간)
+                const rect = this.svg.getBoundingClientRect();
+                const centerScreenX = (touch1.clientX + touch2.clientX) / 2;
+                const centerScreenY = (touch1.clientY + touch2.clientY) / 2;
                 
-                // 최소/최대 크기 제한
-                const minSize = (this.originalViewBox?.width || 1000) * 0.01;
-                const maxSize = (this.originalViewBox?.width || 1000) * 10;
+                // 스크린 좌표 → ViewBox 좌표 변환
+                const centerX = ((centerScreenX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
+                const centerY = ((centerScreenY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
                 
-                if (newWidth > minSize && newWidth < maxSize) {
-                    // ViewBox 중심점 유지
-                    const centerX = this.viewBox.x + this.viewBox.width / 2;
-                    const centerY = this.viewBox.y + this.viewBox.height / 2;
-                    
-                    this.viewBox = {
-                        x: centerX - newWidth / 2,
-                        y: centerY - newHeight / 2,
-                        width: newWidth,
-                        height: newHeight
-                    };
-                    
-                    this.redraw();
-                }
+                // 줌 팩터 계산 (delta를 zoom factor로 변환)
+                const zoomFactor = 1 - (delta * 0.003); // 0.003은 감도 조절값
+                
+                // zoomAt 메서드 사용 (중심점 기준 확대)
+                this.zoomAt(centerX, centerY, zoomFactor);
             }
             
             // 거리 업데이트
@@ -1816,6 +1804,7 @@ class DxfPhotoEditor {
             // 상태 리셋
             this.touchState.isDragging = false;
             this.touchState.isPinching = false;
+            this.touchState.lastTouch = null;
             this.touchState.startViewBox = null;
             
         } else if (touches.length === 1) {
@@ -1829,8 +1818,7 @@ class DxfPhotoEditor {
             this.touchState.isPinching = false;
             this.touchState.startX = touch.clientX;
             this.touchState.startY = touch.clientY;
-            this.touchState.lastX = touch.clientX;
-            this.touchState.lastY = touch.clientY;
+            this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
             this.touchState.startViewBox = {...this.viewBox};
         }
     }
@@ -1845,29 +1833,26 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 특정 점을 중심으로 줌 (개선된 버전)
+     * 특정 점을 중심으로 줌 (부드러운 확대/축소)
      */
     zoomAt(centerX, centerY, factor) {
-        if (!this.originalViewBox) {
-            console.warn('originalViewBox가 없습니다');
-            return;
+        // 새로운 크기 계산
+        const newWidth = this.viewBox.width * factor;
+        const newHeight = this.viewBox.height * factor;
+        
+        // 최소/최대 크기 제한
+        const minSize = (this.originalViewBox?.width || 1000) * 0.01; // 최대 100배 확대
+        const maxSize = (this.originalViewBox?.width || 1000) * 10;   // 최대 10배 축소
+        
+        if (newWidth < minSize || newWidth > maxSize) {
+            return; // 제한을 벗어나면 줌 취소
         }
         
-        // 새로운 크기 계산
-        let newWidth = this.viewBox.width * factor;
-        let newHeight = this.viewBox.height * factor;
-        
-        // 최소/최대 크기 제한 (원본 크기 기준)
-        const minWidth = this.originalViewBox.width * 0.01; // 최대 100배 확대
-        const maxWidth = this.originalViewBox.width * 10;   // 최대 10배 축소
-        
-        newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-        newHeight = Math.max(minWidth, Math.min(maxWidth, newHeight));
-        
-        // 중심점 유지하면서 ViewBox 조정
+        // 중심점의 상대 위치 계산 (0~1 사이 값)
         const centerRatioX = (centerX - this.viewBox.x) / this.viewBox.width;
         const centerRatioY = (centerY - this.viewBox.y) / this.viewBox.height;
         
+        // 새로운 ViewBox 계산 (중심점 유지)
         this.viewBox = {
             x: centerX - newWidth * centerRatioX,
             y: centerY - newHeight * centerRatioY,
@@ -1950,27 +1935,12 @@ class DxfPhotoEditor {
      * 줌 (ViewBox 중심점 기준)
      */
     zoom(factor) {
-        const newWidth = this.viewBox.width / factor;
-        const newHeight = this.viewBox.height / factor;
+        // ViewBox 중심점 계산
+        const centerX = this.viewBox.x + this.viewBox.width / 2;
+        const centerY = this.viewBox.y + this.viewBox.height / 2;
         
-        // 최소/최대 크기 제한
-        const minSize = (this.originalViewBox?.width || 1000) * 0.01;
-        const maxSize = (this.originalViewBox?.width || 1000) * 10;
-        
-        if (newWidth > minSize && newWidth < maxSize) {
-            // ViewBox 중심점 유지
-            const centerX = this.viewBox.x + this.viewBox.width / 2;
-            const centerY = this.viewBox.y + this.viewBox.height / 2;
-            
-            this.viewBox = {
-                x: centerX - newWidth / 2,
-                y: centerY - newHeight / 2,
-                width: newWidth,
-                height: newHeight
-            };
-            
-            this.redraw();
-        }
+        // zoomAt 메서드 사용 (중심점 기준 확대)
+        this.zoomAt(centerX, centerY, 1 / factor);
     }
     
     openMemoModal(photoId) {
