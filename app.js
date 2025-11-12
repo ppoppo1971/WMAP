@@ -45,6 +45,7 @@ class DxfPhotoEditor {
             startX: 0,
             startY: 0,
             lastTouch: null,  // { x, y } 객체로 관리
+            anchorView: null, // 드래그 시작 시 고정할 도면 좌표
             startViewBox: null,
             lastPinchDistance: 0
         };
@@ -64,8 +65,8 @@ class DxfPhotoEditor {
         this.redrawPending = false;
         this.updatePending = false;
         
-        // 드래그 감도 설정 (1.0 = 기본, 1.5 = 50% 더 민감)
-        this.panSensitivity = 1.2;  // 구글맵처럼 약간 더 민감하게
+        // 드래그 감도 설정 (1.0 = 손가락 이동과 동일)
+        this.panSensitivity = 1.0;
         
         this.init();
     }
@@ -1651,6 +1652,7 @@ class DxfPhotoEditor {
         this.touchState.startX = e.clientX;
         this.touchState.startY = e.clientY;
         this.touchState.lastTouch = { x: e.clientX, y: e.clientY };
+        this.touchState.anchorView = this.screenToViewBox(e.clientX, e.clientY);
         this.touchState.startViewBox = {...this.viewBox};
         this.touchState.isDragging = false; // 아직 시작 안함
     }
@@ -1671,33 +1673,26 @@ class DxfPhotoEditor {
         }
         
         // 드래그 처리
-        if (this.touchState.isDragging) {
-            const rect = this.svg.getBoundingClientRect();
+        if (this.touchState.isDragging && this.touchState.anchorView) {
+            const currentView = this.screenToViewBox(e.clientX, e.clientY);
             
-            // 이전 프레임에서의 스크린 이동량 (픽셀)
-            const deltaScreenX = e.clientX - this.touchState.lastTouch.x;
-            const deltaScreenY = e.clientY - this.touchState.lastTouch.y;
+            const deltaViewX = (currentView.x - this.touchState.anchorView.x) * this.panSensitivity;
+            const deltaViewY = (currentView.y - this.touchState.anchorView.y) * this.panSensitivity;
             
-            // 스크린 픽셀 → ViewBox 단위로 변환
-            // 손가락이 오른쪽으로 이동하면(+) ViewBox.x는 왼쪽으로(-) 이동해야 함
-            const deltaViewX = (deltaScreenX / rect.width) * this.viewBox.width * this.panSensitivity;
-            const deltaViewY = (deltaScreenY / rect.height) * this.viewBox.height * this.panSensitivity;
-            
-            // ViewBox 이동
             this.viewBox.x -= deltaViewX;
             this.viewBox.y -= deltaViewY;
             
-            // 현재 위치 저장
-            this.touchState.lastTouch = { x: e.clientX, y: e.clientY };
-            
-            // 빠른 업데이트 (ViewBox만)
             this.updateViewBox();
         }
+        
+        // 현재 위치 저장
+        this.touchState.lastTouch = { x: e.clientX, y: e.clientY };
     }
     
     onMouseUp(e) {
         this.touchState.isDragging = false;
         this.touchState.lastTouch = null;
+        this.touchState.anchorView = null;
         this.touchState.startViewBox = null;
     }
     
@@ -1723,6 +1718,7 @@ class DxfPhotoEditor {
             this.touchState.startX = touch.clientX;
             this.touchState.startY = touch.clientY;
             this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
+            this.touchState.anchorView = this.screenToViewBox(touch.clientX, touch.clientY);
             this.touchState.startViewBox = {...this.viewBox};
             
         } else if (touches.length === 2) {
@@ -1731,6 +1727,7 @@ class DxfPhotoEditor {
             
             this.touchState.isDragging = false;
             this.touchState.isPinching = true;
+            this.touchState.anchorView = null;
             
             // 두 손가락 사이 거리 계산
             const touch1 = touches[0];
@@ -1767,27 +1764,20 @@ class DxfPhotoEditor {
             }
             
             // 단일 터치: 팬(드래그)
-            if (this.touchState.isDragging && this.touchState.lastTouch) {
-                const rect = this.svg.getBoundingClientRect();
+            if (this.touchState.isDragging && this.touchState.lastTouch && this.touchState.anchorView) {
+                const currentView = this.screenToViewBox(touch.clientX, touch.clientY);
                 
-                // 이전 프레임에서의 스크린 이동량 (픽셀)
-                const deltaScreenX = touch.clientX - this.touchState.lastTouch.x;
-                const deltaScreenY = touch.clientY - this.touchState.lastTouch.y;
+                const deltaViewX = (currentView.x - this.touchState.anchorView.x) * this.panSensitivity;
+                const deltaViewY = (currentView.y - this.touchState.anchorView.y) * this.panSensitivity;
                 
-                // 스크린 픽셀 → ViewBox 단위로 변환
-                const deltaViewX = (deltaScreenX / rect.width) * this.viewBox.width * this.panSensitivity;
-                const deltaViewY = (deltaScreenY / rect.height) * this.viewBox.height * this.panSensitivity;
-                
-                // ViewBox 이동
                 this.viewBox.x -= deltaViewX;
                 this.viewBox.y -= deltaViewY;
                 
-                // 현재 위치 저장
-                this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
-                
-                // 빠른 업데이트 (ViewBox만)
                 this.updateViewBox();
             }
+            
+            // 현재 위치 저장
+            this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
             
         } else if (touches.length === 2 && this.touchState.isPinching) {
             // 두 손가락: 핀치줌 (중심점 기준)
@@ -1844,6 +1834,7 @@ class DxfPhotoEditor {
             this.touchState.isDragging = false;
             this.touchState.isPinching = false;
             this.touchState.lastTouch = null;
+            this.touchState.anchorView = null;
             this.touchState.startViewBox = null;
             
         } else if (touches.length === 1) {
@@ -1858,6 +1849,7 @@ class DxfPhotoEditor {
             this.touchState.startX = touch.clientX;
             this.touchState.startY = touch.clientY;
             this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
+            this.touchState.anchorView = this.screenToViewBox(touch.clientX, touch.clientY);
             this.touchState.startViewBox = {...this.viewBox};
         }
     }
@@ -1869,6 +1861,34 @@ class DxfPhotoEditor {
         const dx = touch2.clientX - touch1.clientX;
         const dy = touch2.clientY - touch1.clientY;
         return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    /**
+     * 화면 좌표를 현재 ViewBox 기준 좌표로 변환
+     */
+    screenToViewBox(screenX, screenY) {
+        if (!this.svg) {
+            return { x: screenX, y: screenY };
+        }
+        
+        const point = this.svg.createSVGPoint ? this.svg.createSVGPoint() : { x: screenX, y: screenY };
+        point.x = screenX;
+        point.y = screenY;
+        
+        const ctm = this.svg.getScreenCTM();
+        if (!ctm || !ctm.inverse) {
+            // 폴백: 단순 비율 변환
+            const rect = this.svg.getBoundingClientRect();
+            const normX = (screenX - rect.left) / rect.width;
+            const normY = (screenY - rect.top) / rect.height;
+            return {
+                x: this.viewBox.x + normX * this.viewBox.width,
+                y: this.viewBox.y + normY * this.viewBox.height
+            };
+        }
+        
+        const svgPoint = point.matrixTransform(ctm.inverse());
+        return { x: svgPoint.x, y: svgPoint.y };
     }
     
     /**
