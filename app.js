@@ -37,9 +37,19 @@ class DxfPhotoEditor {
         this.scale = 1;
         this.offsetX = 0;
         this.offsetY = 0;
-        this.isDragging = false;
-        this.dragStartX = 0;
-        this.dragStartY = 0;
+        
+        // 터치/드래그 상태
+        this.touchState = {
+            isDragging: false,
+            isPinching: false,
+            startX: 0,
+            startY: 0,
+            lastX: 0,
+            lastY: 0,
+            startViewBox: null,
+            lastPinchDistance: 0
+        };
+        
         this.selectedPhotoId = null;
         
         // 롱프레스 관련
@@ -50,11 +60,6 @@ class DxfPhotoEditor {
         
         // 텍스트 관련
         this.texts = []; // { id, x, y, text, fontSize }
-        
-        // 핀치줌 관련
-        this.isPinching = false;
-        this.lastPinchDistance = 0;
-        this.pinchCenter = { x: 0, y: 0 };
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -1604,37 +1609,42 @@ class DxfPhotoEditor {
     }
     
     onMouseDown(e) {
-        // 마우스 드래그 준비 (롱프레스와 통합)
-        this.dragStartX = e.clientX;
-        this.dragStartY = e.clientY;
-        this.dragStartViewBox = {...this.viewBox};
-        this.isDragging = false; // 아직 드래그 시작하지 않음
+        // 롱프레스 시작
+        this.startLongPress(e.clientX, e.clientY);
+        
+        // 드래그 준비
+        this.touchState.startX = e.clientX;
+        this.touchState.startY = e.clientY;
+        this.touchState.lastX = e.clientX;
+        this.touchState.lastY = e.clientY;
+        this.touchState.startViewBox = {...this.viewBox};
+        this.touchState.isDragging = false; // 아직 시작 안함
     }
     
     onMouseMove(e) {
-        // 롱프레스 타이머가 있고 이동 감지 시 취소
-        if (this.longPressTimer) {
-            const moveDistance = Math.sqrt(
-                Math.pow(e.clientX - this.dragStartX, 2) + 
-                Math.pow(e.clientY - this.dragStartY, 2)
-            );
-            
-            // 10px 이상 이동하면 롱프레스 취소하고 드래그 시작
-            if (moveDistance > 10) {
-                this.cancelLongPress();
-                this.isDragging = true;
-            }
+        if (!this.touchState.startViewBox) return;
+        
+        // 이동 거리 계산
+        const moveDistance = Math.sqrt(
+            Math.pow(e.clientX - this.touchState.startX, 2) + 
+            Math.pow(e.clientY - this.touchState.startY, 2)
+        );
+        
+        // 5px 이상 이동하면 롱프레스 취소하고 드래그 시작
+        if (moveDistance > 5 && this.longPressTimer) {
+            this.cancelLongPress();
+            this.touchState.isDragging = true;
         }
         
         // 드래그 처리
-        if (this.isDragging) {
+        if (this.touchState.isDragging) {
             const rect = this.svg.getBoundingClientRect();
-            const dx = (e.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
-            const dy = (e.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
+            const dx = (e.clientX - this.touchState.startX) * (this.viewBox.width / rect.width);
+            const dy = (e.clientY - this.touchState.startY) * (this.viewBox.height / rect.height);
             
             this.viewBox = {
-                x: this.dragStartViewBox.x - dx,
-                y: this.dragStartViewBox.y - dy,
+                x: this.touchState.startViewBox.x - dx,
+                y: this.touchState.startViewBox.y - dy,
                 width: this.viewBox.width,
                 height: this.viewBox.height
             };
@@ -1644,12 +1654,8 @@ class DxfPhotoEditor {
     }
     
     onMouseUp(e) {
-        // 롱프레스 완료 확인
-        if (this.isLongPress) {
-            this.isLongPress = false;
-        }
-        
-        this.isDragging = false;
+        this.touchState.isDragging = false;
+        this.touchState.startViewBox = null;
     }
     
     /**
@@ -1659,40 +1665,38 @@ class DxfPhotoEditor {
         // 기본 브라우저 동작 방지 (페이지 확대/축소 방지)
         e.preventDefault();
         
-        if (e.touches.length === 1) {
-            // 단일 터치: 롱프레스 시작 + 팬(드래그) 준비
-            const touch = e.touches[0];
+        const touches = e.touches;
+        
+        if (touches.length === 1) {
+            // 단일 터치: 롱프레스 시작 + 드래그 준비
+            const touch = touches[0];
             
-            // 롱프레스 타이머 시작
+            // 롱프레스 시작
             this.startLongPress(touch.clientX, touch.clientY);
             
-            // 드래그 준비 (롱프레스가 취소되면 드래그 시작)
-            this.dragStartX = touch.clientX;
-            this.dragStartY = touch.clientY;
-            this.dragStartViewBox = {...this.viewBox};
-            this.isPinching = false;
-            this.isDragging = false; // 아직 드래그 시작하지 않음
+            // 드래그 상태 초기화
+            this.touchState.isDragging = false;
+            this.touchState.isPinching = false;
+            this.touchState.startX = touch.clientX;
+            this.touchState.startY = touch.clientY;
+            this.touchState.lastX = touch.clientX;
+            this.touchState.lastY = touch.clientY;
+            this.touchState.startViewBox = {...this.viewBox};
             
-        } else if (e.touches.length === 2) {
-            // 두 손가락: 핀치줌 (롱프레스 취소)
-            this.cancelLongPress();
-            this.isPinching = true;
-            this.isDragging = false;
+        } else if (touches.length === 2) {
+            // 두 손가락: 핀치줌 시작
+            this.cancelLongPress(); // 롱프레스 취소
+            
+            this.touchState.isDragging = false;
+            this.touchState.isPinching = true;
             
             // 두 손가락 사이 거리 계산
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
+            const touch1 = touches[0];
+            const touch2 = touches[1];
+            const distance = this.getTouchDistance(touch1, touch2);
             
-            this.lastPinchDistance = this.getTouchDistance(touch1, touch2);
-            
-            // 핀치 중심점 계산 (두 손가락의 중간)
-            const rect = this.svg.getBoundingClientRect();
-            const centerScreenX = (touch1.clientX + touch2.clientX) / 2;
-            const centerScreenY = (touch1.clientY + touch2.clientY) / 2;
-            
-            // 스크린 좌표 → ViewBox 좌표 변환
-            this.pinchCenter.x = ((centerScreenX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
-            this.pinchCenter.y = ((centerScreenY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+            this.touchState.lastPinchDistance = distance;
+            this.touchState.startViewBox = {...this.viewBox};
         }
     }
     
@@ -1703,55 +1707,77 @@ class DxfPhotoEditor {
         // 항상 기본 동작 방지 (부드러운 동작)
         e.preventDefault();
         
-        if (e.touches.length === 1 && !this.isPinching) {
-            // 이동 감지: 롱프레스 취소
-            if (this.longPressTimer) {
-                const touch = e.touches[0];
-                const moveDistance = Math.sqrt(
-                    Math.pow(touch.clientX - this.dragStartX, 2) + 
-                    Math.pow(touch.clientY - this.dragStartY, 2)
-                );
-                
-                // 10px 이상 이동하면 롱프레스 취소하고 드래그 시작
-                if (moveDistance > 10) {
-                    this.cancelLongPress();
-                    this.isDragging = true;
-                }
+        const touches = e.touches;
+        
+        if (touches.length === 1 && !this.touchState.isPinching) {
+            const touch = touches[0];
+            
+            // 이동 거리 계산
+            const moveDistance = Math.sqrt(
+                Math.pow(touch.clientX - this.touchState.startX, 2) + 
+                Math.pow(touch.clientY - this.touchState.startY, 2)
+            );
+            
+            // 5px 이상 이동하면 롱프레스 취소하고 드래그 시작
+            if (moveDistance > 5 && this.longPressTimer) {
+                this.cancelLongPress();
+                this.touchState.isDragging = true;
             }
             
             // 단일 터치: 팬(드래그)
-            if (this.isDragging) {
-                const touch = e.touches[0];
-                
+            if (this.touchState.isDragging && this.touchState.startViewBox) {
                 const rect = this.svg.getBoundingClientRect();
-                const dx = (touch.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
-                const dy = (touch.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
+                const dx = (touch.clientX - this.touchState.startX) * (this.viewBox.width / rect.width);
+                const dy = (touch.clientY - this.touchState.startY) * (this.viewBox.height / rect.height);
                 
                 this.viewBox = {
-                    x: this.dragStartViewBox.x - dx,
-                    y: this.dragStartViewBox.y - dy,
+                    x: this.touchState.startViewBox.x - dx,
+                    y: this.touchState.startViewBox.y - dy,
                     width: this.viewBox.width,
                     height: this.viewBox.height
                 };
                 
                 this.redraw();
             }
-        } else if (e.touches.length === 2 && this.isPinching) {
+            
+        } else if (touches.length === 2 && this.touchState.isPinching) {
             // 두 손가락: 핀치줌
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
+            const touch1 = touches[0];
+            const touch2 = touches[1];
             
             // 현재 거리
             const currentDistance = this.getTouchDistance(touch1, touch2);
             
-            // 줌 비율 계산 (부드럽게)
-            const zoomFactor = this.lastPinchDistance / currentDistance;
-            
-            // 핀치 중심점 기준으로 줌
-            this.zoomAt(this.pinchCenter.x, this.pinchCenter.y, zoomFactor);
+            if (this.touchState.lastPinchDistance > 0 && this.touchState.startViewBox) {
+                // 줌 비율 계산
+                const zoomRatio = this.touchState.lastPinchDistance / currentDistance;
+                
+                // 새로운 ViewBox 크기
+                const newWidth = this.viewBox.width * zoomRatio;
+                const newHeight = this.viewBox.height * zoomRatio;
+                
+                // 최소/최대 크기 제한
+                const minSize = (this.originalViewBox?.width || 1000) * 0.01;
+                const maxSize = (this.originalViewBox?.width || 1000) * 10;
+                
+                if (newWidth > minSize && newWidth < maxSize) {
+                    // ViewBox 중심점 유지
+                    const centerX = this.viewBox.x + this.viewBox.width / 2;
+                    const centerY = this.viewBox.y + this.viewBox.height / 2;
+                    
+                    this.viewBox = {
+                        x: centerX - newWidth / 2,
+                        y: centerY - newHeight / 2,
+                        width: newWidth,
+                        height: newHeight
+                    };
+                    
+                    this.redraw();
+                }
+            }
             
             // 거리 업데이트
-            this.lastPinchDistance = currentDistance;
+            this.touchState.lastPinchDistance = currentDistance;
         }
     }
     
@@ -1761,33 +1787,37 @@ class DxfPhotoEditor {
     onTouchEnd(e) {
         e.preventDefault();
         
-        if (e.touches.length === 0) {
+        const touches = e.touches;
+        
+        if (touches.length === 0) {
             // 모든 터치 종료
             
-            // 롱프레스 완료 확인
-            if (this.isLongPress) {
-                // 롱프레스가 완료된 경우 (컨텍스트 메뉴 표시됨)
-                this.isLongPress = false;
-                this.isDragging = false;
-            } else {
-                // 롱프레스 타이머 취소
+            // 롱프레스 확인
+            if (!this.isLongPress) {
                 this.cancelLongPress();
+            } else {
+                this.isLongPress = false;
             }
             
-            this.isDragging = false;
-            this.isPinching = false;
+            // 상태 리셋
+            this.touchState.isDragging = false;
+            this.touchState.isPinching = false;
+            this.touchState.startViewBox = null;
             
-        } else if (e.touches.length === 1) {
-            // 두 손가락에서 한 손가락으로 전환 시
-            this.isPinching = false;
+        } else if (touches.length === 1) {
+            // 두 손가락에서 한 손가락으로 전환
             this.cancelLongPress();
             
-            // 남은 한 손가락으로 팬 재시작
-            const touch = e.touches[0];
-            this.isDragging = true;
-            this.dragStartX = touch.clientX;
-            this.dragStartY = touch.clientY;
-            this.dragStartViewBox = {...this.viewBox};
+            const touch = touches[0];
+            
+            // 드래그 재시작 준비
+            this.touchState.isDragging = true;
+            this.touchState.isPinching = false;
+            this.touchState.startX = touch.clientX;
+            this.touchState.startY = touch.clientY;
+            this.touchState.lastX = touch.clientX;
+            this.touchState.lastY = touch.clientY;
+            this.touchState.startViewBox = {...this.viewBox};
         }
     }
     
@@ -1840,7 +1870,7 @@ class DxfPhotoEditor {
      */
     onCanvasClick(e) {
         // 드래그 중이었으면 클릭으로 처리하지 않음
-        if (this.isDragging) {
+        if (this.touchState.isDragging) {
             return;
         }
         
@@ -1903,14 +1933,30 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 줌 (부드러운 애니메이션)
+     * 줌 (ViewBox 중심점 기준)
      */
     zoom(factor) {
-        // ViewBox 중심점 기준으로 줌
-        const centerX = this.viewBox.x + this.viewBox.width / 2;
-        const centerY = this.viewBox.y + this.viewBox.height / 2;
+        const newWidth = this.viewBox.width / factor;
+        const newHeight = this.viewBox.height / factor;
         
-        this.zoomAt(centerX, centerY, 1 / factor);
+        // 최소/최대 크기 제한
+        const minSize = (this.originalViewBox?.width || 1000) * 0.01;
+        const maxSize = (this.originalViewBox?.width || 1000) * 10;
+        
+        if (newWidth > minSize && newWidth < maxSize) {
+            // ViewBox 중심점 유지
+            const centerX = this.viewBox.x + this.viewBox.width / 2;
+            const centerY = this.viewBox.y + this.viewBox.height / 2;
+            
+            this.viewBox = {
+                x: centerX - newWidth / 2,
+                y: centerY - newHeight / 2,
+                width: newWidth,
+                height: newHeight
+            };
+            
+            this.redraw();
+        }
     }
     
     openMemoModal(photoId) {
