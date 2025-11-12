@@ -301,9 +301,8 @@ class DxfPhotoEditor {
         this.svg.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
         this.svg.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
         
-        // 사진 클릭 - Canvas에서
-        this.canvas.addEventListener('click', this.onCanvasClick.bind(this));
-        this.canvas.style.pointerEvents = 'auto'; // 사진 클릭 위해 활성화
+        // 사진 클릭은 SVG 클릭 이벤트에서 처리 (Canvas는 pointer-events: none 유지)
+        this.svg.addEventListener('click', this.onCanvasClick.bind(this));
         
         // 줌 버튼 (좌측 하단 고정)
         document.getElementById('zoom-in').addEventListener('click', () => {
@@ -1605,30 +1604,51 @@ class DxfPhotoEditor {
     }
     
     onMouseDown(e) {
-        this.isDragging = true;
+        // 마우스 드래그 준비 (롱프레스와 통합)
         this.dragStartX = e.clientX;
         this.dragStartY = e.clientY;
         this.dragStartViewBox = {...this.viewBox};
+        this.isDragging = false; // 아직 드래그 시작하지 않음
     }
     
     onMouseMove(e) {
-        if (!this.isDragging) return;
+        // 롱프레스 타이머가 있고 이동 감지 시 취소
+        if (this.longPressTimer) {
+            const moveDistance = Math.sqrt(
+                Math.pow(e.clientX - this.dragStartX, 2) + 
+                Math.pow(e.clientY - this.dragStartY, 2)
+            );
+            
+            // 10px 이상 이동하면 롱프레스 취소하고 드래그 시작
+            if (moveDistance > 10) {
+                this.cancelLongPress();
+                this.isDragging = true;
+            }
+        }
         
-        const rect = this.svg.getBoundingClientRect();
-        const dx = (e.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
-        const dy = (e.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
-        
-        this.viewBox = {
-            x: this.dragStartViewBox.x - dx,
-            y: this.dragStartViewBox.y - dy,
-            width: this.viewBox.width,
-            height: this.viewBox.height
-        };
-        
-        this.redraw();
+        // 드래그 처리
+        if (this.isDragging) {
+            const rect = this.svg.getBoundingClientRect();
+            const dx = (e.clientX - this.dragStartX) * (this.viewBox.width / rect.width);
+            const dy = (e.clientY - this.dragStartY) * (this.viewBox.height / rect.height);
+            
+            this.viewBox = {
+                x: this.dragStartViewBox.x - dx,
+                y: this.dragStartViewBox.y - dy,
+                width: this.viewBox.width,
+                height: this.viewBox.height
+            };
+            
+            this.redraw();
+        }
     }
     
     onMouseUp(e) {
+        // 롱프레스 완료 확인
+        if (this.isLongPress) {
+            this.isLongPress = false;
+        }
+        
         this.isDragging = false;
     }
     
@@ -1816,9 +1836,15 @@ class DxfPhotoEditor {
     
     /**
      * 캔버스 클릭 이벤트 (이모지 클릭 감지)
+     * SVG 클릭 이벤트에서 호출됨
      */
     onCanvasClick(e) {
-        const rect = this.canvas.getBoundingClientRect();
+        // 드래그 중이었으면 클릭으로 처리하지 않음
+        if (this.isDragging) {
+            return;
+        }
+        
+        const rect = this.svg.getBoundingClientRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
         
