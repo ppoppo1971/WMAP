@@ -1624,7 +1624,7 @@ class DxfPhotoEditor {
     onMouseMove(e) {
         if (!this.touchState.startViewBox) return;
         
-        // 이동 거리 계산
+        // 이동 거리 계산 (롱프레스 취소 판단용)
         const moveDistance = Math.sqrt(
             Math.pow(e.clientX - this.touchState.startX, 2) + 
             Math.pow(e.clientY - this.touchState.startY, 2)
@@ -1636,18 +1636,25 @@ class DxfPhotoEditor {
             this.touchState.isDragging = true;
         }
         
-        // 드래그 처리
+        // 드래그 처리 (이전 프레임과의 차이 사용 - 부드러운 이동)
         if (this.touchState.isDragging) {
             const rect = this.svg.getBoundingClientRect();
-            const dx = (e.clientX - this.touchState.startX) * (this.viewBox.width / rect.width);
-            const dy = (e.clientY - this.touchState.startY) * (this.viewBox.height / rect.height);
             
-            this.viewBox = {
-                x: this.touchState.startViewBox.x - dx,
-                y: this.touchState.startViewBox.y - dy,
-                width: this.viewBox.width,
-                height: this.viewBox.height
-            };
+            // 이전 프레임에서의 이동량 (delta)
+            const deltaX = e.clientX - this.touchState.lastX;
+            const deltaY = e.clientY - this.touchState.lastY;
+            
+            // ViewBox 좌표계로 변환
+            const dx = deltaX * (this.viewBox.width / rect.width);
+            const dy = deltaY * (this.viewBox.height / rect.height);
+            
+            // ViewBox 이동 (증분 업데이트)
+            this.viewBox.x -= dx;
+            this.viewBox.y -= dy;
+            
+            // 현재 위치를 다음 프레임의 lastX/lastY로 저장
+            this.touchState.lastX = e.clientX;
+            this.touchState.lastY = e.clientY;
             
             this.redraw();
         }
@@ -1724,18 +1731,25 @@ class DxfPhotoEditor {
                 this.touchState.isDragging = true;
             }
             
-            // 단일 터치: 팬(드래그)
-            if (this.touchState.isDragging && this.touchState.startViewBox) {
+            // 단일 터치: 팬(드래그) - 증분 업데이트 방식
+            if (this.touchState.isDragging) {
                 const rect = this.svg.getBoundingClientRect();
-                const dx = (touch.clientX - this.touchState.startX) * (this.viewBox.width / rect.width);
-                const dy = (touch.clientY - this.touchState.startY) * (this.viewBox.height / rect.height);
                 
-                this.viewBox = {
-                    x: this.touchState.startViewBox.x - dx,
-                    y: this.touchState.startViewBox.y - dy,
-                    width: this.viewBox.width,
-                    height: this.viewBox.height
-                };
+                // 이전 프레임에서의 이동량 (delta)
+                const deltaX = touch.clientX - this.touchState.lastX;
+                const deltaY = touch.clientY - this.touchState.lastY;
+                
+                // ViewBox 좌표계로 변환
+                const dx = deltaX * (this.viewBox.width / rect.width);
+                const dy = deltaY * (this.viewBox.height / rect.height);
+                
+                // ViewBox 이동 (증분 업데이트)
+                this.viewBox.x -= dx;
+                this.viewBox.y -= dy;
+                
+                // 현재 위치를 다음 프레임의 lastX/lastY로 저장
+                this.touchState.lastX = touch.clientX;
+                this.touchState.lastY = touch.clientY;
                 
                 this.redraw();
             }
