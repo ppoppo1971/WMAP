@@ -62,6 +62,7 @@ class DxfPhotoEditor {
         
         // 렌더링 최적화
         this.redrawPending = false;
+        this.updatePending = false;
         
         this.init();
     }
@@ -1085,6 +1086,33 @@ class DxfPhotoEditor {
         this.ctx.fillText('DXF 파일을 열어주세요', this.canvas.width / 2, this.canvas.height / 2);
     }
     
+    /**
+     * ViewBox만 빠르게 업데이트 (드래그/줌 중)
+     * requestAnimationFrame으로 최적화
+     */
+    updateViewBox() {
+        if (!this.dxfData) return;
+        
+        // 이미 예약된 업데이트가 있으면 중복 호출 방지
+        if (this.updatePending) return;
+        
+        this.updatePending = true;
+        
+        requestAnimationFrame(() => {
+            this.updatePending = false;
+            
+            // SVG ViewBox만 업데이트 (SVG는 자동으로 재렌더링됨)
+            this.svg.setAttribute('viewBox', 
+                `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.width} ${this.viewBox.height}`);
+            
+            // Canvas 사진만 다시 그리기 (빠름)
+            this.drawPhotosCanvas();
+        });
+    }
+    
+    /**
+     * 전체 다시 그리기 (DXF 로드, 사진 추가/삭제 시)
+     */
     redraw() {
         // requestAnimationFrame으로 부드러운 렌더링
         if (this.redrawPending) return;
@@ -1442,8 +1470,13 @@ class DxfPhotoEditor {
     }
     
     drawPhotosCanvas() {
-        // Canvas 초기화 (투명)
+        // Canvas 초기화 (투명) - 한 번에 처리
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        
+        // 사진과 텍스트가 없으면 빠르게 리턴
+        if (this.photos.length === 0 && this.texts.length === 0) {
+            return;
+        }
         
         // 사진 마커 그리기
         this.drawPhotos();
@@ -1653,7 +1686,8 @@ class DxfPhotoEditor {
             // 현재 위치 저장
             this.touchState.lastTouch = { x: e.clientX, y: e.clientY };
             
-            this.redraw();
+            // 빠른 업데이트 (ViewBox만)
+            this.updateViewBox();
         }
     }
     
@@ -1747,7 +1781,8 @@ class DxfPhotoEditor {
                 // 현재 위치 저장
                 this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
                 
-                this.redraw();
+                // 빠른 업데이트 (ViewBox만)
+                this.updateViewBox();
             }
             
         } else if (touches.length === 2 && this.touchState.isPinching) {
@@ -1860,7 +1895,8 @@ class DxfPhotoEditor {
             height: newHeight
         };
         
-        this.redraw();
+        // 빠른 업데이트 (ViewBox만)
+        this.updateViewBox();
     }
     
     /**
