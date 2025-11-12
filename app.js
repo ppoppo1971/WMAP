@@ -64,6 +64,9 @@ class DxfPhotoEditor {
         this.redrawPending = false;
         this.updatePending = false;
         
+        // 드래그 감도 설정 (1.0 = 기본, 1.5 = 50% 더 민감)
+        this.panSensitivity = 1.2;  // 구글맵처럼 약간 더 민감하게
+        
         this.init();
     }
     
@@ -1671,17 +1674,18 @@ class DxfPhotoEditor {
         if (this.touchState.isDragging) {
             const rect = this.svg.getBoundingClientRect();
             
-            // 이전 프레임에서의 이동량 (delta)
-            const deltaX = e.clientX - this.touchState.lastTouch.x;
-            const deltaY = e.clientY - this.touchState.lastTouch.y;
+            // 이전 프레임에서의 스크린 이동량 (픽셀)
+            const deltaScreenX = e.clientX - this.touchState.lastTouch.x;
+            const deltaScreenY = e.clientY - this.touchState.lastTouch.y;
             
-            // ViewBox 좌표계로 변환
-            const dx = deltaX * (this.viewBox.width / rect.width);
-            const dy = deltaY * (this.viewBox.height / rect.height);
+            // 스크린 픽셀 → ViewBox 단위로 변환
+            // 손가락이 오른쪽으로 이동하면(+) ViewBox.x는 왼쪽으로(-) 이동해야 함
+            const deltaViewX = (deltaScreenX / rect.width) * this.viewBox.width * this.panSensitivity;
+            const deltaViewY = (deltaScreenY / rect.height) * this.viewBox.height * this.panSensitivity;
             
-            // ViewBox 이동 (증분 업데이트)
-            this.viewBox.x -= dx;
-            this.viewBox.y -= dy;
+            // ViewBox 이동
+            this.viewBox.x -= deltaViewX;
+            this.viewBox.y -= deltaViewY;
             
             // 현재 위치 저장
             this.touchState.lastTouch = { x: e.clientX, y: e.clientY };
@@ -1766,17 +1770,17 @@ class DxfPhotoEditor {
             if (this.touchState.isDragging && this.touchState.lastTouch) {
                 const rect = this.svg.getBoundingClientRect();
                 
-                // 이전 프레임에서의 이동량 (delta)
-                const deltaX = touch.clientX - this.touchState.lastTouch.x;
-                const deltaY = touch.clientY - this.touchState.lastTouch.y;
+                // 이전 프레임에서의 스크린 이동량 (픽셀)
+                const deltaScreenX = touch.clientX - this.touchState.lastTouch.x;
+                const deltaScreenY = touch.clientY - this.touchState.lastTouch.y;
                 
-                // ViewBox 좌표계로 변환
-                const dx = deltaX * (this.viewBox.width / rect.width);
-                const dy = deltaY * (this.viewBox.height / rect.height);
+                // 스크린 픽셀 → ViewBox 단위로 변환
+                const deltaViewX = (deltaScreenX / rect.width) * this.viewBox.width * this.panSensitivity;
+                const deltaViewY = (deltaScreenY / rect.height) * this.viewBox.height * this.panSensitivity;
                 
-                // ViewBox 이동 (증분 업데이트)
-                this.viewBox.x -= dx;
-                this.viewBox.y -= dy;
+                // ViewBox 이동
+                this.viewBox.x -= deltaViewX;
+                this.viewBox.y -= deltaViewY;
                 
                 // 현재 위치 저장
                 this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
