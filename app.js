@@ -98,16 +98,23 @@ class DxfPhotoEditor {
                 if (layersObj) {
                     let layer = null;
                     
-                    // A. 직접 객체 접근 (예: layers["F0027217"])
+                    // A. 직접 객체 접근 (예: layers["L_가드펜스"])
                     if (!Array.isArray(layersObj) && typeof layersObj === 'object') {
                         layer = layersObj[entity.layer];
                         if (layer) source = 'layers[name]';
                     }
                     
-                    // B. layers.layers 배열 (예: layers.layers[0].name)
-                    if (!layer && layersObj.layers && Array.isArray(layersObj.layers)) {
-                        layer = layersObj.layers.find(l => l.name === entity.layer);
-                        if (layer) source = 'layers.layers[]';
+                    // B. layers.layers 객체 (예: layers.layers["L_가드펜스"]) ⭐ 수정
+                    if (!layer && layersObj.layers) {
+                        if (Array.isArray(layersObj.layers)) {
+                            // 배열인 경우
+                            layer = layersObj.layers.find(l => l.name === entity.layer);
+                            if (layer) source = 'layers.layers[]';
+                        } else if (typeof layersObj.layers === 'object') {
+                            // 객체인 경우 ⭐ 새로 추가
+                            layer = layersObj.layers[entity.layer];
+                            if (layer) source = 'layers.layers[name]';
+                        }
                     }
                     
                     // C. 직접 배열 (예: layers[0].name)
@@ -119,12 +126,12 @@ class DxfPhotoEditor {
                     // 레이어에서 색상 추출
                     if (layer) {
                         // colorIndex 우선
-                        if (layer.colorIndex !== undefined) {
+                        if (layer.colorIndex !== undefined && layer.colorIndex !== null) {
                             color = this.autocadColorIndexToHex(layer.colorIndex);
                             source += `.colorIndex(${layer.colorIndex})`;
                         }
                         // color 대체
-                        else if (layer.color !== undefined) {
+                        else if (layer.color !== undefined && layer.color !== null) {
                             if (typeof layer.color === 'string') {
                                 color = layer.color;
                             } else if (typeof layer.color === 'number') {
@@ -1145,14 +1152,33 @@ class DxfPhotoEditor {
                 if (layersObj.layers) {
                     console.log('✅ layers 속성 발견');
                     console.log('layersObj.layers 타입:', Array.isArray(layersObj.layers) ? 'Array' : typeof layersObj.layers);
-                    console.log('layersObj.layers:', layersObj.layers);
+                    
+                    // 2-1. 객체인 경우 레이어 목록 출력 (처음 10개)
+                    if (typeof layersObj.layers === 'object' && !Array.isArray(layersObj.layers)) {
+                        const layerNames = Object.keys(layersObj.layers);
+                        console.log(`   → 레이어 개수: ${layerNames.length}개`);
+                        console.log('   → 레이어 색상 정보 (처음 10개):');
+                        layerNames.slice(0, 10).forEach(name => {
+                            const layer = layersObj.layers[name];
+                            console.log(`      "${name}": colorIndex=${layer.colorIndex}, color=${layer.color}`);
+                        });
+                    }
+                    // 2-2. 배열인 경우
+                    else if (Array.isArray(layersObj.layers)) {
+                        console.log(`   → 레이어 개수: ${layersObj.layers.length}개`);
+                        console.log('   → 레이어 색상 정보 (처음 10개):');
+                        layersObj.layers.slice(0, 10).forEach((layer, i) => {
+                            console.log(`      [${i}] "${layer.name}": colorIndex=${layer.colorIndex}, color=${layer.color}`);
+                        });
+                    }
                 }
                 
                 // 3. 배열인 경우
                 if (Array.isArray(layersObj)) {
                     console.log('✅ 배열 형태의 레이어 테이블');
+                    console.log(`   → 레이어 개수: ${layersObj.length}개`);
                     layersObj.slice(0, 5).forEach((layer, i) => {
-                        console.log(`  [${i}]:`, layer);
+                        console.log(`  [${i}] "${layer.name}": colorIndex=${layer.colorIndex}`, layer);
                     });
                 }
             }
