@@ -275,15 +275,19 @@ class DxfPhotoEditor {
             Math.pow(clientY - this.lastTapPosition.y, 2)
         );
         
+        console.log(`👆 탭: timeDiff=${timeDiff}ms, distance=${distance.toFixed(0)}px`);
+        
         // 더블탭 감지 (300ms 이내, 50px 이내)
         if (timeDiff < this.doubleTapDelay && distance < this.doubleTapDistance) {
             // 더블탭 확인!
-            console.log('🎯 더블탭 감지!');
+            console.log('🎯🎯 더블탭 감지! 줌 실행...');
             
             // 탭한 위치를 ViewBox 좌표로 변환
             const rect = this.getCachedRect();
             const tapX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
             const tapY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+            
+            console.log(`   → 탭 위치: 스크린(${clientX}, ${clientY}), ViewBox(${tapX.toFixed(0)}, ${tapY.toFixed(0)})`);
             
             // 해당 위치로 줌인 (2배 확대)
             this.zoomToPoint(tapX, tapY, 2.0);
@@ -294,6 +298,7 @@ class DxfPhotoEditor {
             
         } else {
             // 첫 번째 탭 기록
+            console.log('   → 첫 번째 탭 기록');
             this.lastTapTime = now;
             this.lastTapPosition = { x: clientX, y: clientY };
         }
@@ -1999,22 +2004,26 @@ class DxfPhotoEditor {
                 Math.pow(touch.clientY - this.touchState.startY, 2)
             );
             
-            // 5px 이상 이동하면 롱프레스 취소하고 드래그 시작
-            if (moveDistance > 5 && this.longPressTimer) {
+            // 10px 이상 이동하면 롱프레스 취소하고 드래그 시작 (더블탭 안정성 향상)
+            if (moveDistance > 10 && this.longPressTimer) {
                 this.cancelLongPress();
                 this.touchState.isDragging = true;
             }
             
-            // 단일 터치: 팬(드래그)
+            // 단일 터치: 팬(드래그) - 손가락 방향과 일치
             if (this.touchState.isDragging && this.touchState.lastTouch) {
-                // 픽셀 이동량
+                // 픽셀 이동량 (손가락 이동)
                 const deltaX = touch.clientX - this.touchState.lastTouch.x;
                 const deltaY = touch.clientY - this.touchState.lastTouch.y;
                 
                 // 픽셀을 ViewBox 좌표로 변환
                 const rect = this.getCachedRect();
+                
+                // 손가락 방향 = 도면 이동 방향
+                // 손가락을 오른쪽으로 → 도면도 오른쪽으로 → viewBox.x 감소
+                // 손가락을 아래로 → 도면도 아래로 → viewBox.y 증가 (SVG Y축은 아래가 증가)
                 const viewDeltaX = -(deltaX / rect.width) * this.viewBox.width;
-                const viewDeltaY = -(deltaY / rect.height) * this.viewBox.height;
+                const viewDeltaY = (deltaY / rect.height) * this.viewBox.height;  // Y는 양수
                 
                 // ViewBox 이동
                 this.viewBox.x += viewDeltaX;
