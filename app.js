@@ -678,6 +678,38 @@ class DxfPhotoEditor {
         } else {
             console.warn('⚠️ delete-photo-btn 버튼을 찾을 수 없습니다 (사진 보기 모달)');
         }
+
+        const photoActionModal = document.getElementById('photo-action-modal');
+        if (photoActionModal) {
+            photoActionModal.addEventListener('click', (e) => {
+                if (e.target === photoActionModal) {
+                    this.closePhotoActionModal();
+                }
+            });
+        }
+
+        const closePhotoActionBtn = document.getElementById('close-photo-action');
+        if (closePhotoActionBtn) {
+            closePhotoActionBtn.addEventListener('click', () => {
+                this.closePhotoActionModal();
+            });
+        }
+
+        const photoActionViewBtn = document.getElementById('photo-action-view-btn');
+        if (photoActionViewBtn) {
+            photoActionViewBtn.addEventListener('click', () => {
+                this.closePhotoActionModal();
+                this.openPhotoViewModal(this.selectedPhotoId);
+            });
+        }
+
+        const photoActionDeleteBtn = document.getElementById('photo-action-delete-btn');
+        if (photoActionDeleteBtn) {
+            photoActionDeleteBtn.addEventListener('click', () => {
+                this.closePhotoActionModal();
+                this.deletePhoto();
+            });
+        }
     }
     
     /**
@@ -1752,11 +1784,6 @@ class DxfPhotoEditor {
         this.ctx.fillStyle = '#f5f5f5';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
         
-        this.ctx.fillStyle = '#999';
-        this.ctx.font = '20px -apple-system, sans-serif';
-        this.ctx.textAlign = 'center';
-        this.ctx.textBaseline = 'middle';
-        this.ctx.fillText('DXF 파일을 열어주세요', this.canvas.width / 2, this.canvas.height / 2);
     }
     
     /**
@@ -2306,10 +2333,10 @@ class DxfPhotoEditor {
             
             this.ctx.save();
             
-            // 작은 원으로 표시 (15px 고정)
+            // 작은 원으로 표시 (7.5px 고정)
             this.ctx.fillStyle = '#FF0000'; // 빨간색
             this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, 7.5, 0, Math.PI * 2); // 반지름 7.5px (직경 15px)
+            this.ctx.arc(screenX, screenY, 3.75, 0, Math.PI * 2); // 반지름 3.75px (직경 7.5px)
             this.ctx.fill();
             
             // 테두리 (흰색, 더 잘 보이게)
@@ -2944,7 +2971,7 @@ class DxfPhotoEditor {
             
             if (distance <= clickRadius) {
                 console.log(`✅ 사진 ${photo.id} 클릭됨!`);
-                this.openPhotoViewModal(photo.id);
+                this.openPhotoActionModal(photo.id);
                 return;
             }
         }
@@ -2972,6 +2999,21 @@ class DxfPhotoEditor {
         document.getElementById('photo-view-modal').classList.add('active');
     }
     
+    openPhotoActionModal(photoId) {
+        const photo = this.photos.find(p => p.id === photoId);
+        if (!photo) return;
+
+        this.selectedPhotoId = photoId;
+        document.getElementById('photo-action-modal').classList.add('active');
+    }
+
+    closePhotoActionModal() {
+        const modal = document.getElementById('photo-action-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+
     /**
      * 사진 보기 모달 닫기
      */
