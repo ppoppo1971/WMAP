@@ -64,6 +64,7 @@ class DxfPhotoEditor {
         this.lastTapPosition = { x: 0, y: 0 };
         this.doubleTapDelay = 300; // 300ms 이내 두 번 탭
         this.doubleTapDistance = 50; // 50px 이내 같은 위치
+        this.tapMoveThreshold = 15; // 탭으로 인정할 최대 이동 거리 (px)
         
         // 텍스트 관련
         this.texts = []; // { id, x, y, text, fontSize }
@@ -267,6 +268,24 @@ class DxfPhotoEditor {
         this.rectCacheTime = now;
         
         return this.cachedRect;
+    }
+    
+    /**
+     * 현재 제스처가 탭에 해당하는지 여부
+     */
+    isTapGesture(touch) {
+        if (!touch) return false;
+        
+        if (typeof this.touchState.startX !== 'number' || typeof this.touchState.startY !== 'number') {
+            return true;
+        }
+        
+        const moveDistance = Math.sqrt(
+            Math.pow(touch.clientX - this.touchState.startX, 2) +
+            Math.pow(touch.clientY - this.touchState.startY, 2)
+        );
+        
+        return moveDistance < this.tapMoveThreshold;
     }
     
     /**
@@ -2819,14 +2838,16 @@ class DxfPhotoEditor {
             }
             
             // 사진 클릭 또는 더블탭 감지
-            if (!this.touchState.isDragging && !this.isLongPress && e.changedTouches.length > 0) {
+            if (!this.isLongPress && e.changedTouches.length > 0) {
                 const touch = e.changedTouches[0];
+                const isTap = this.isTapGesture(touch);
+                let photoClicked = false;
                 
-                // 먼저 사진 클릭 확인
-                const photoClicked = this.checkPhotoClick(touch.clientX, touch.clientY);
+                if (isTap) {
+                    photoClicked = this.checkPhotoClick(touch.clientX, touch.clientY);
+                }
                 
-                // 사진이 클릭되지 않았을 때만 더블탭 처리
-                if (!photoClicked) {
+                if (isTap && !photoClicked) {
                     this.handleDoubleTap(touch.clientX, touch.clientY);
                 }
             }
