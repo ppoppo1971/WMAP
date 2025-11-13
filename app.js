@@ -518,20 +518,42 @@ class DxfPhotoEditor {
         
         // 카메라/갤러리 파일 입력
         document.getElementById('camera-input').addEventListener('change', (e) => {
-            console.log('📸 카메라 입력 변경 감지:', e.target.files[0]?.name);
+            const file = e.target.files[0];
+            console.log('📸 카메라 입력 변경 감지:', file?.name);
             console.log('   롱프레스 위치:', this.longPressPosition);
-            if (e.target.files[0]) {
-                this.addPhotoAt(e.target.files[0], this.longPressPosition);
+            
+            if (file) {
+                // ViewBox 좌표로 변환된 위치 사용
+                const position = {
+                    x: this.longPressPosition.x,
+                    y: this.longPressPosition.y
+                };
+                console.log('   → 사진 추가 위치:', position);
+                this.addPhotoAt(file, position);
+            } else {
+                console.warn('⚠️ 선택된 파일이 없습니다');
             }
+            
             e.target.value = ''; // 초기화
         });
         
         document.getElementById('gallery-input').addEventListener('change', (e) => {
-            console.log('🖼️ 갤러리 입력 변경 감지:', e.target.files[0]?.name);
+            const file = e.target.files[0];
+            console.log('🖼️ 갤러리 입력 변경 감지:', file?.name);
             console.log('   롱프레스 위치:', this.longPressPosition);
-            if (e.target.files[0]) {
-                this.addPhotoAt(e.target.files[0], this.longPressPosition);
+            
+            if (file) {
+                // ViewBox 좌표로 변환된 위치 사용
+                const position = {
+                    x: this.longPressPosition.x,
+                    y: this.longPressPosition.y
+                };
+                console.log('   → 사진 추가 위치:', position);
+                this.addPhotoAt(file, position);
+            } else {
+                console.warn('⚠️ 선택된 파일이 없습니다');
             }
+            
             e.target.value = ''; // 초기화
         });
         
@@ -732,85 +754,82 @@ class DxfPhotoEditor {
         textBtn.parentNode.replaceChild(newTextBtn, textBtn);
         
         // 카메라 버튼
-        newCameraBtn.addEventListener('touchend', (e) => {
-            console.log('📷 카메라 버튼 touchend!');
+        const handleCamera = (e) => {
+            console.log('📷 카메라 버튼 클릭!');
             e.preventDefault();
             e.stopPropagation();
-            alert('카메라 버튼 클릭됨!');
+            
+            // 롱프레스 위치 확인
+            console.log('   롱프레스 위치:', this.longPressPosition);
+            
+            // 메뉴 닫기
             this.hideContextMenu();
-            setTimeout(() => {
-                const cameraInput = document.getElementById('camera-input');
-                if (cameraInput) {
-                    cameraInput.click();
-                }
-            }, 100);
-        }, { passive: false });
+            
+            // ⭐ iOS Safari에서는 사용자 제스처에서 직접 호출해야 함
+            const cameraInput = document.getElementById('camera-input');
+            console.log('📸 카메라 입력 요소:', cameraInput);
+            
+            if (cameraInput) {
+                console.log('📸 카메라 입력 클릭 시도...');
+                // 즉시 클릭 (setTimeout 없이)
+                cameraInput.click();
+                console.log('✅ 카메라 입력 클릭 완료');
+            } else {
+                console.error('❌ 카메라 입력 요소를 찾을 수 없음!');
+            }
+        };
         
-        newCameraBtn.addEventListener('click', (e) => {
-            console.log('📷 카메라 버튼 click!');
-            e.preventDefault();
-            e.stopPropagation();
-            alert('카메라 버튼 클릭됨!');
-            this.hideContextMenu();
-            setTimeout(() => {
-                const cameraInput = document.getElementById('camera-input');
-                if (cameraInput) {
-                    cameraInput.click();
-                }
-            }, 100);
-        });
+        newCameraBtn.addEventListener('touchend', handleCamera, { passive: false });
+        newCameraBtn.addEventListener('click', handleCamera);
         
         // 갤러리 버튼
-        newGalleryBtn.addEventListener('touchend', (e) => {
-            console.log('🖼️ 갤러리 버튼 touchend!');
+        const handleGallery = (e) => {
+            console.log('🖼️ 갤러리 버튼 클릭!');
             e.preventDefault();
             e.stopPropagation();
-            alert('갤러리 버튼 클릭됨!');
+            
+            // 롱프레스 위치 확인
+            console.log('   롱프레스 위치:', this.longPressPosition);
+            
+            // 메뉴 닫기
             this.hideContextMenu();
-            setTimeout(() => {
-                const galleryInput = document.getElementById('gallery-input');
-                if (galleryInput) {
-                    galleryInput.click();
-                }
-            }, 100);
-        }, { passive: false });
+            
+            // ⭐ iOS Safari에서는 사용자 제스처에서 직접 호출해야 함
+            const galleryInput = document.getElementById('gallery-input');
+            console.log('🖼️ 갤러리 입력 요소:', galleryInput);
+            
+            if (galleryInput) {
+                console.log('🖼️ 갤러리 입력 클릭 시도...');
+                // 즉시 클릭 (setTimeout 없이)
+                galleryInput.click();
+                console.log('✅ 갤러리 입력 클릭 완료');
+            } else {
+                console.error('❌ 갤러리 입력 요소를 찾을 수 없음!');
+            }
+        };
         
-        newGalleryBtn.addEventListener('click', (e) => {
-            console.log('🖼️ 갤러리 버튼 click!');
-            e.preventDefault();
-            e.stopPropagation();
-            alert('갤러리 버튼 클릭됨!');
-            this.hideContextMenu();
-            setTimeout(() => {
-                const galleryInput = document.getElementById('gallery-input');
-                if (galleryInput) {
-                    galleryInput.click();
-                }
-            }, 100);
-        });
+        newGalleryBtn.addEventListener('touchend', handleGallery, { passive: false });
+        newGalleryBtn.addEventListener('click', handleGallery);
         
         // 텍스트 버튼
-        newTextBtn.addEventListener('touchend', (e) => {
-            console.log('📝 텍스트 버튼 touchend!');
+        const handleText = (e) => {
+            console.log('📝 텍스트 버튼 클릭!');
             e.preventDefault();
             e.stopPropagation();
-            alert('텍스트 버튼 클릭됨!');
+            
+            // 롱프레스 위치 확인
+            console.log('   롱프레스 위치:', this.longPressPosition);
+            
+            // 메뉴 닫기
             this.hideContextMenu();
-            setTimeout(() => {
-                this.showTextInputModal();
-            }, 100);
-        }, { passive: false });
+            
+            // 즉시 텍스트 모달 표시
+            console.log('📝 텍스트 모달 표시 시도...');
+            this.showTextInputModal();
+        };
         
-        newTextBtn.addEventListener('click', (e) => {
-            console.log('📝 텍스트 버튼 click!');
-            e.preventDefault();
-            e.stopPropagation();
-            alert('텍스트 버튼 클릭됨!');
-            this.hideContextMenu();
-            setTimeout(() => {
-                this.showTextInputModal();
-            }, 100);
-        });
+        newTextBtn.addEventListener('touchend', handleText, { passive: false });
+        newTextBtn.addEventListener('click', handleText);
         
         console.log('✅ 모든 이벤트 리스너 등록 완료');
     }
@@ -2066,7 +2085,13 @@ class DxfPhotoEditor {
             return;
         }
         
+        if (typeof position.x !== 'number' || typeof position.y !== 'number') {
+            console.error('❌ 위치 좌표가 올바르지 않습니다:', position);
+            return;
+        }
+        
         console.log('📷 사진 추가 시작:', file.name);
+        console.log('   위치:', { x: position.x, y: position.y });
         this.showLoading(true);
         
         try {
@@ -2092,6 +2117,8 @@ class DxfPhotoEditor {
                 memo: '',
                 fileName: file.name
             };
+            
+            console.log('   → 사진 객체 생성:', { x: photo.x, y: photo.y, width: photo.width, height: photo.height });
             
             this.photos.push(photo);
             console.log(`   → 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
