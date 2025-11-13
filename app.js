@@ -520,59 +520,116 @@ class DxfPhotoEditor {
         
         // 카메라 버튼
         const handleCameraClick = (e) => {
+            console.log('📷 카메라 버튼 클릭!');
             e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation(); // 다른 핸들러 차단
             this.hideContextMenu();
-            document.getElementById('camera-input').click();
+            
+            // 짧은 지연 후 카메라 입력 트리거
+            setTimeout(() => {
+                document.getElementById('camera-input').click();
+            }, 100);
         };
-        cameraBtn.addEventListener('click', handleCameraClick);
+        cameraBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // 기본 터치 동작 방지
+        });
         cameraBtn.addEventListener('touchend', handleCameraClick);
+        cameraBtn.addEventListener('click', handleCameraClick);
         
         // 갤러리 버튼
         const handleGalleryClick = (e) => {
+            console.log('🖼️ 갤러리 버튼 클릭!');
             e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation(); // 다른 핸들러 차단
             this.hideContextMenu();
-            document.getElementById('gallery-input').click();
+            
+            // 짧은 지연 후 갤러리 입력 트리거
+            setTimeout(() => {
+                document.getElementById('gallery-input').click();
+            }, 100);
         };
-        galleryBtn.addEventListener('click', handleGalleryClick);
+        galleryBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // 기본 터치 동작 방지
+        });
         galleryBtn.addEventListener('touchend', handleGalleryClick);
+        galleryBtn.addEventListener('click', handleGalleryClick);
         
         // 텍스트 버튼
         const handleTextClick = (e) => {
+            console.log('📝 텍스트 버튼 클릭!');
             e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation(); // 다른 핸들러 차단
             this.hideContextMenu();
-            this.showTextInputModal();
+            
+            // 짧은 지연 후 모달 표시
+            setTimeout(() => {
+                this.showTextInputModal();
+            }, 100);
         };
-        textBtn.addEventListener('click', handleTextClick);
+        textBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // 기본 터치 동작 방지
+        });
         textBtn.addEventListener('touchend', handleTextClick);
+        textBtn.addEventListener('click', handleTextClick);
         
         // 카메라/갤러리 파일 입력
         document.getElementById('camera-input').addEventListener('change', (e) => {
-            this.addPhotoAt(e.target.files[0], this.longPressPosition);
+            console.log('📸 카메라 입력 변경 감지:', e.target.files[0]?.name);
+            console.log('   롱프레스 위치:', this.longPressPosition);
+            if (e.target.files[0]) {
+                this.addPhotoAt(e.target.files[0], this.longPressPosition);
+            }
             e.target.value = ''; // 초기화
         });
         
         document.getElementById('gallery-input').addEventListener('change', (e) => {
-            this.addPhotoAt(e.target.files[0], this.longPressPosition);
+            console.log('🖼️ 갤러리 입력 변경 감지:', e.target.files[0]?.name);
+            console.log('   롱프레스 위치:', this.longPressPosition);
+            if (e.target.files[0]) {
+                this.addPhotoAt(e.target.files[0], this.longPressPosition);
+            }
             e.target.value = ''; // 초기화
         });
         
         // 텍스트 입력 모달
-        document.getElementById('text-cancel-btn').addEventListener('click', () => {
-            this.hideTextInputModal();
-        });
+        const textCancelBtn = document.getElementById('text-cancel-btn');
+        const textSaveBtn = document.getElementById('text-save-btn');
         
-        document.getElementById('text-save-btn').addEventListener('click', () => {
-            this.saveTextInput();
-        });
+        if (textCancelBtn) {
+            textCancelBtn.addEventListener('click', () => {
+                console.log('❌ 텍스트 입력 취소');
+                this.hideTextInputModal();
+            });
+        }
+        
+        if (textSaveBtn) {
+            textSaveBtn.addEventListener('click', () => {
+                console.log('💾 텍스트 저장 시도');
+                this.saveTextInput();
+            });
+        }
         
         // 컨텍스트 메뉴 외부 클릭/터치 시 닫기
         const handleOutsideClick = (e) => {
             const contextMenu = document.getElementById('context-menu');
-            // 컨텍스트 메뉴가 표시되어 있고, 메뉴 자체를 클릭한 게 아니면 닫기
-            if (contextMenu.classList.contains('active') && !contextMenu.contains(e.target)) {
+            
+            // 컨텍스트 메뉴가 표시되어 있지 않으면 무시
+            if (!contextMenu.classList.contains('active')) {
+                return;
+            }
+            
+            // 메뉴 버튼을 클릭한 경우 무시 (버튼 자체 핸들러가 처리)
+            if (e.target.closest('.context-menu-item')) {
+                console.log('🎯 메뉴 항목 클릭 감지 (외부 핸들러에서 무시)');
+                return;
+            }
+            
+            // 컨텍스트 메뉴 외부를 클릭한 경우에만 닫기
+            if (!contextMenu.contains(e.target)) {
+                console.log('👆 메뉴 외부 클릭 - 메뉴 닫기');
                 this.hideContextMenu();
             }
         };
@@ -713,14 +770,29 @@ class DxfPhotoEditor {
      * 텍스트 입력 모달 표시
      */
     showTextInputModal() {
+        console.log('📝 텍스트 입력 모달 표시 시도...');
         const modal = document.getElementById('text-input-modal');
         const textField = document.getElementById('text-input-field');
         
+        if (!modal) {
+            console.error('❌ 텍스트 모달 요소를 찾을 수 없음!');
+            return;
+        }
+        
+        if (!textField) {
+            console.error('❌ 텍스트 입력 필드를 찾을 수 없음!');
+            return;
+        }
+        
         textField.value = '';
         modal.classList.add('active');
+        console.log('✅ 텍스트 입력 모달 표시됨');
         
         // 포커스
-        setTimeout(() => textField.focus(), 100);
+        setTimeout(() => {
+            textField.focus();
+            console.log('⌨️ 텍스트 필드 포커스 설정');
+        }, 100);
     }
     
     /**
@@ -1925,13 +1997,27 @@ class DxfPhotoEditor {
      * @param {Object} position - {x, y} ViewBox 좌표
      */
     async addPhotoAt(file, position) {
-        if (!file) return;
+        console.log('📷 addPhotoAt 호출됨:', { file: file?.name, position });
         
+        if (!file) {
+            console.warn('⚠️ 파일이 없습니다');
+            return;
+        }
+        
+        if (!position) {
+            console.error('❌ 위치 정보가 없습니다');
+            return;
+        }
+        
+        console.log('📷 사진 추가 시작:', file.name);
         this.showLoading(true);
         
         try {
             // 이미지 로드
+            console.log('   → 이미지 데이터 읽기 중...');
             const imageData = await this.readFileAsDataURL(file);
+            
+            console.log('   → 이미지 로드 중...');
             const image = await this.loadImage(imageData);
             
             // 사진 크기를 ViewBox 크기의 10%로 설정
@@ -1951,16 +2037,19 @@ class DxfPhotoEditor {
             };
             
             this.photos.push(photo);
-            this.redraw();
+            console.log(`   → 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
             
-            console.log('📷 사진 추가 완료:', photo.fileName);
+            this.redraw();
+            console.log('   → 화면 다시 그리기 완료');
+            
+            console.log('✅ 사진 추가 완료:', photo.fileName);
             
             // Google Drive 자동 저장
             this.autoSave();
             
         } catch (error) {
-            console.error('사진 추가 오류:', error);
-            alert('사진을 추가하는데 실패했습니다.');
+            console.error('❌ 사진 추가 오류:', error);
+            alert('사진을 추가하는데 실패했습니다.\n\n' + error.message);
         } finally {
             this.showLoading(false);
         }
