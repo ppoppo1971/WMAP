@@ -48,7 +48,15 @@ class DxfPhotoEditor {
             lastTouch: null,  // { x, y } 객체로 관리
             anchorView: null, // 드래그 시작 시 고정할 도면 좌표
             startViewBox: null,
-            lastPinchDistance: 0
+            lastPinchDistance: 0,
+            // CSS Transform 관련 (성능 최적화)
+            transformActive: false,    // CSS transform 사용 중인지
+            transformX: 0,             // 임시 이동량 (픽셀)
+            transformY: 0,
+            transformScale: 1,         // 임시 스케일
+            accumulatedDeltaX: 0,      // 누적 이동량
+            accumulatedDeltaY: 0,
+            initialPinchCenter: null   // 핀치 시작 중심점
         };
         
         this.selectedPhotoId = null;
@@ -65,6 +73,11 @@ class DxfPhotoEditor {
         // 렌더링 최적화
         this.redrawPending = false;
         this.updatePending = false;
+        
+        // getBoundingClientRect() 캐싱 (성능 최적화)
+        this.cachedRect = null;
+        this.rectCacheTime = 0;
+        this.rectCacheDuration = 100; // 100ms 동안 캐시 유지
         
         // 드래그 감도 설정 (1.0 = 손가락 이동과 동일)
         this.panSensitivity = 1.0;
@@ -230,6 +243,123 @@ class DxfPhotoEditor {
             return Math.round(255 * color).toString(16).padStart(2, '0');
         };
         return `#${f(0)}${f(8)}${f(4)}`;
+    }
+    
+    /**
+     * getBoundingClientRect() 캐싱 (성능 최적화)
+     * 레이아웃 재계산 강제를 최소화
+     */
+    getCachedRect() {
+        const now = Date.now();
+        
+        // 캐시가 유효하면 재사용
+        if (this.cachedRect && (now - this.rectCacheTime) < this.rectCacheDuration) {
+            return this.cachedRect;
+        }
+        
+        // 캐시 갱신
+        this.cachedRect = this.svg.getBoundingClientRect();
+        this.rectCacheTime = now;
+        
+        return this.cachedRect;
+    }
+    
+    /**
+     * CSS Transform 적용 (GPU 가속, 매우 빠름)
+     * 터치 중에만 사용, 터치 종료 시 실제 ViewBox 업데이트
+     */
+    applyTransform() {
+        if (!this.touchState.transformActive) return;
+        
+        const { transformX, transformY, transformScale } = this.touchState;
+        
+        // SVG와 Canvas에 동일한 transform 적용
+        const transform = `translate(${transformX}px, ${transformY}px) scale(${transformScale})`;
+        this.svg.style.transform = transform;
+        this.canvas.style.transform = transform;
+        
+        // transform-origin을 좌측 상단으로 고정
+        this.svg.style.transformOrigin = '0 0';
+        this.canvas.style.transformOrigin = '0 0';
+    }
+    
+    /**
+     * CSS Transform 제거 및 실제 ViewBox 업데이트
+     */
+    commitTransform() {
+        if (!this.touchState.transformActive) return;
+        
+        // CSS transform 제거
+        this.svg.style.transform = '';
+        this.canvas.style.transform = '';
+        
+        // transform 상태 초기화
+        this.touchState.transformActive = false;
+        this.touchState.transformX = 0;
+        this.touchState.transformY = 0;
+        this.touchState.transformScale = 1;
+        this.touchState.accumulatedDeltaX = 0;
+        this.touchState.accumulatedDeltaY = 0;
+        this.touchState.initialPinchCenter = null;
+        
+        // 실제 ViewBox 업데이트 (한 번만)
+        this.updateViewBox();
+    }
+    
+    /**
+     * CSS Transform을 실제 ViewBox 좌표로 변환
+     * 터치 종료 시 호출됨
+     */
+    commitTransformToViewBox() {
+        if (!this.touchState.transformActive) return;
+        
+        const { transformX, transformY, transformScale } = this.touchState;
+        
+        // 화면 크기
+        const rect = this.getCachedRect();
+        
+        // 1. 이동량을 ViewBox 좌표로 변환
+        const viewDeltaX = -(transformX / rect.width) * this.viewBox.width;
+        const viewDeltaY = -(transformY / rect.height) * this.viewBox.height;
+        
+        // 2. 스케일 변환 (ViewBox 크기 변경)
+        const newWidth = this.viewBox.width / transformScale;
+        const newHeight = this.viewBox.height / transformScale;
+        
+        // 3. 스케일 중심점 보정
+        // 스케일 시 중심점이 유지되도록 ViewBox 원점 조정
+        const centerRatioX = 0.5; // 화면 중심
+        const centerRatioY = 0.5;
+        
+        const oldCenterX = this.viewBox.x + this.viewBox.width * centerRatioX;
+        const oldCenterY = this.viewBox.y + this.viewBox.height * centerRatioY;
+        
+        // 4. 최종 ViewBox 계산
+        this.viewBox = {
+            x: oldCenterX - newWidth * centerRatioX + viewDeltaX,
+            y: oldCenterY - newHeight * centerRatioY + viewDeltaY,
+            width: newWidth,
+            height: newHeight
+        };
+        
+        // 5. CSS transform 제거
+        this.svg.style.transform = '';
+        this.canvas.style.transform = '';
+        
+        // 6. transform 상태 초기화
+        this.touchState.transformActive = false;
+        this.touchState.transformX = 0;
+        this.touchState.transformY = 0;
+        this.touchState.transformScale = 1;
+        this.touchState.accumulatedDeltaX = 0;
+        this.touchState.accumulatedDeltaY = 0;
+        this.touchState.initialPinchCenter = null;
+        
+        // 7. 실제 ViewBox 업데이트 (한 번만)
+        this.updateViewBox();
+        
+        // 8. rect 캐시 무효화 (ViewBox 변경됨)
+        this.cachedRect = null;
     }
     
     init() {
@@ -1623,10 +1753,10 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 텍스트 그리기
+     * 텍스트 그리기 (최적화: rect 캐싱)
      */
     drawTexts() {
-        const rect = this.svg.getBoundingClientRect();
+        const rect = this.getCachedRect();
         
         this.texts.forEach(textObj => {
             // ViewBox 좌표 → 스크린 좌표 변환
@@ -1660,10 +1790,10 @@ class DxfPhotoEditor {
     // 기존 Canvas 렌더링 함수들은 제거됨 (SVG로 대체)
     
     /**
-     * 사진을 이모지(📷)로 표시
+     * 사진을 이모지(📷)로 표시 (최적화: rect 캐싱)
      */
     drawPhotos() {
-        const rect = this.svg.getBoundingClientRect();
+        const rect = this.getCachedRect();
         
         this.photos.forEach(photo => {
             // ViewBox 좌표 → 스크린 좌표 변환
@@ -1881,7 +2011,8 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 터치 이동 이벤트 (핀치줌 지원 + 롱프레스 취소)
+     * 터치 이동 이벤트 (CSS Transform 기반 - 초고속 성능)
+     * ViewBox 변경 대신 CSS transform 사용 → GPU 가속, 60fps 달성
      */
     onTouchMove(e) {
         // 항상 기본 동작 방지 (부드러운 동작)
@@ -1902,50 +2033,65 @@ class DxfPhotoEditor {
             if (moveDistance > 5 && this.longPressTimer) {
                 this.cancelLongPress();
                 this.touchState.isDragging = true;
+                this.touchState.transformActive = true;  // CSS transform 활성화
             }
             
-            // 단일 터치: 팬(드래그)
-            if (this.touchState.isDragging && this.touchState.lastTouch && this.touchState.anchorView) {
-                const currentView = this.screenToViewBox(touch.clientX, touch.clientY);
+            // 단일 터치: 팬(드래그) - CSS Transform 사용
+            if (this.touchState.isDragging && this.touchState.lastTouch) {
+                // 픽셀 단위 이동량 계산
+                const deltaX = touch.clientX - this.touchState.lastTouch.x;
+                const deltaY = touch.clientY - this.touchState.lastTouch.y;
                 
-                const deltaViewX = (currentView.x - this.touchState.anchorView.x) * this.panSensitivity;
-                const deltaViewY = (currentView.y - this.touchState.anchorView.y) * this.panSensitivity;
+                // 누적 이동량 업데이트
+                this.touchState.accumulatedDeltaX += deltaX;
+                this.touchState.accumulatedDeltaY += deltaY;
                 
-                this.viewBox.x -= deltaViewX;
-                this.viewBox.y -= deltaViewY;
+                // CSS transform 업데이트 (픽셀 단위, 매우 빠름)
+                this.touchState.transformX = this.touchState.accumulatedDeltaX;
+                this.touchState.transformY = this.touchState.accumulatedDeltaY;
                 
-                this.updateViewBox();
+                // CSS transform 적용 (GPU 가속)
+                this.applyTransform();
             }
             
             // 현재 위치 저장
             this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
             
         } else if (touches.length === 2 && this.touchState.isPinching) {
-            // 두 손가락: 핀치줌 (중심점 기준)
+            // 두 손가락: 핀치줌 (CSS Transform 사용)
             const touch1 = touches[0];
             const touch2 = touches[1];
             
             // 현재 거리
             const currentDistance = this.getTouchDistance(touch1, touch2);
             
+            // 핀치 중심점 (스크린 좌표)
+            const centerScreenX = (touch1.clientX + touch2.clientX) / 2;
+            const centerScreenY = (touch1.clientY + touch2.clientY) / 2;
+            
             if (this.touchState.lastPinchDistance > 0) {
-                // 거리 변화량 (delta)
-                const delta = currentDistance - this.touchState.lastPinchDistance;
+                // 스케일 팩터 계산
+                const scaleFactor = currentDistance / this.touchState.lastPinchDistance;
                 
-                // 핀치 중심점 계산 (두 손가락의 중간)
-                const rect = this.svg.getBoundingClientRect();
-                const centerScreenX = (touch1.clientX + touch2.clientX) / 2;
-                const centerScreenY = (touch1.clientY + touch2.clientY) / 2;
+                // 첫 핀치 시 중심점 저장
+                if (!this.touchState.initialPinchCenter) {
+                    this.touchState.initialPinchCenter = {
+                        x: centerScreenX,
+                        y: centerScreenY
+                    };
+                    this.touchState.transformActive = true;
+                }
                 
-                // 스크린 좌표 → ViewBox 좌표 변환
-                const centerX = ((centerScreenX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
-                const centerY = ((centerScreenY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+                // 누적 스케일 업데이트
+                this.touchState.transformScale *= scaleFactor;
                 
-                // 줌 팩터 계산 (delta를 zoom factor로 변환)
-                const zoomFactor = 1 - (delta * 0.003); // 0.003은 감도 조절값
+                // 스케일 중심점 보정 (중심점이 움직이지 않도록)
+                const center = this.touchState.initialPinchCenter;
+                this.touchState.transformX = centerScreenX - (centerScreenX - this.touchState.transformX) * scaleFactor;
+                this.touchState.transformY = centerScreenY - (centerScreenY - this.touchState.transformY) * scaleFactor;
                 
-                // zoomAt 메서드 사용 (중심점 기준 확대)
-                this.zoomAt(centerX, centerY, zoomFactor);
+                // CSS transform 적용 (GPU 가속)
+                this.applyTransform();
             }
             
             // 거리 업데이트
@@ -1963,6 +2109,11 @@ class DxfPhotoEditor {
         
         if (touches.length === 0) {
             // 모든 터치 종료
+            
+            // ⭐ CSS Transform → ViewBox 업데이트 (핵심!)
+            if (this.touchState.transformActive) {
+                this.commitTransformToViewBox();
+            }
             
             // 컨텍스트 메뉴가 열려있고, 드래그하지 않았고, 롱프레스가 아니면 메뉴 닫기
             const contextMenu = document.getElementById('context-menu');
@@ -2002,6 +2153,12 @@ class DxfPhotoEditor {
             
         } else if (touches.length === 1) {
             // 두 손가락에서 한 손가락으로 전환
+            
+            // ⭐ 핀치줌 종료 시 ViewBox 업데이트
+            if (this.touchState.transformActive && this.touchState.isPinching) {
+                this.commitTransformToViewBox();
+            }
+            
             this.cancelLongPress();
             
             const touch = touches[0];
@@ -2096,22 +2253,21 @@ class DxfPhotoEditor {
             return;
         }
         
-        const rect = this.svg.getBoundingClientRect();
+        // 최적화: rect 한 번만 가져오기
+        const rect = this.getCachedRect();
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
-        
-        const svgRect = this.svg.getBoundingClientRect();
         
         // 이모지 클릭 확인 (원형 영역)
         for (let i = this.photos.length - 1; i >= 0; i--) {
             const photo = this.photos[i];
             
             // 이모지 중심점 계산
-            const centerX = ((photo.x + photo.width / 2 - this.viewBox.x) / this.viewBox.width) * svgRect.width;
-            const centerY = ((photo.y + photo.height / 2 - this.viewBox.y) / this.viewBox.height) * svgRect.height;
+            const centerX = ((photo.x + photo.width / 2 - this.viewBox.x) / this.viewBox.width) * rect.width;
+            const centerY = ((photo.y + photo.height / 2 - this.viewBox.y) / this.viewBox.height) * rect.height;
             
             // 이모지 크기
-            const emojiSize = Math.max(40, (photo.width / this.viewBox.width) * svgRect.width);
+            const emojiSize = Math.max(40, (photo.width / this.viewBox.width) * rect.width);
             const radius = emojiSize / 2 + 5;
             
             // 거리 계산 (원형 클릭 영역)
