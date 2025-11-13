@@ -351,9 +351,21 @@ window.initGoogleDrive = async function() {
         
         window.saveToDrive = async (appData, dxfFileName) => {
             try {
-                console.log('💾 Google Drive 저장 중...');
+                console.log('💾 Google Drive 저장 시작...');
+                console.log('   파일명:', dxfFileName);
+                console.log('   사진 개수:', appData.photos.length);
+                console.log('   텍스트 개수:', appData.texts.length);
+                
+                if (!window.driveManager) {
+                    throw new Error('Google Drive Manager가 초기화되지 않았습니다');
+                }
+                
+                if (!window.driveManager.accessToken) {
+                    throw new Error('Google Drive 로그인이 필요합니다');
+                }
                 
                 // 1. 메타데이터 저장
+                console.log('📝 메타데이터 생성 중...');
                 const metadata = {
                     dxfFile: dxfFileName,
                     photos: appData.photos.map((photo, index) => ({
@@ -367,23 +379,31 @@ window.initGoogleDrive = async function() {
                     lastModified: new Date().toISOString()
                 };
                 
+                console.log('📤 메타데이터 업로드 중...');
                 await window.driveManager.saveMetadata(dxfFileName, metadata);
+                console.log('✅ 메타데이터 저장 완료');
                 
                 // 2. 사진 파일들 업로드
-                for (let i = 0; i < appData.photos.length; i++) {
-                    const photo = appData.photos[i];
-                    const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${i + 1}.jpg`;
-                    
-                    await window.driveManager.uploadImage(photoFileName, photo.imageData);
+                if (appData.photos.length > 0) {
+                    console.log(`📸 사진 업로드 시작 (${appData.photos.length}개)...`);
+                    for (let i = 0; i < appData.photos.length; i++) {
+                        const photo = appData.photos[i];
+                        const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${i + 1}.jpg`;
+                        
+                        console.log(`   [${i + 1}/${appData.photos.length}] ${photoFileName} 업로드 중...`);
+                        await window.driveManager.uploadImage(photoFileName, photo.imageData);
+                        console.log(`   ✅ ${photoFileName} 업로드 완료`);
+                    }
+                    console.log('✅ 모든 사진 업로드 완료');
                 }
                 
-                console.log('✅ 저장 완료!');
-                showToast('💾 Google Drive에 저장되었습니다');
+                console.log('✅ Google Drive 저장 완료!');
                 return true;
             } catch (error) {
-                console.error('❌ 저장 실패:', error);
-                showToast('⚠️ 저장 실패: ' + error.message);
-                return false;
+                console.error('❌ Google Drive 저장 실패:', error);
+                console.error('   에러 상세:', error.message);
+                console.error('   스택:', error.stack);
+                throw error; // 에러를 위로 전파하여 app.js에서 처리
             }
         };
         

@@ -1164,6 +1164,8 @@ class DxfPhotoEditor {
                 name: file.name
             };
             
+            console.log('📁 현재 드라이브 파일 설정됨:', window.currentDriveFile);
+            
             // DXF 파싱 및 렌더링
             this.loadDxfFromText(fileContent, file.name);
             
@@ -1207,6 +1209,10 @@ class DxfPhotoEditor {
         this.showLoading(true);
         
         try {
+            // 로컬 파일을 열 때는 Google Drive 파일 정보 초기화
+            window.currentDriveFile = null;
+            console.log('📁 로컬 파일 열기 - currentDriveFile 초기화');
+            
             // 1. 파일 읽기
             const text = await file.text();
             
@@ -2637,20 +2643,103 @@ class DxfPhotoEditor {
     /**
      * Google Drive 자동 저장
      */
-    autoSave() {
-        // Google Drive에 데이터 저장 (비동기)
-        if (typeof window.saveToDrive === 'function' && window.currentDriveFile) {
+    async autoSave() {
+        // Google Drive에 데이터 저장
+        console.log('💾 자동 저장 시도...');
+        console.log('   saveToDrive 함수:', typeof window.saveToDrive);
+        console.log('   currentDriveFile:', window.currentDriveFile);
+        
+        if (typeof window.saveToDrive !== 'function') {
+            console.error('❌ saveToDrive 함수를 찾을 수 없습니다');
+            this.showToast('⚠️ 저장 실패: 드라이브 기능을 사용할 수 없습니다');
+            return;
+        }
+        
+        if (!window.currentDriveFile) {
+            console.warn('⚠️ Google Drive 파일 정보가 없습니다 (로컬 파일 또는 로그인 안 됨)');
+            this.showToast('⚠️ 저장 실패: Google Drive에서 파일을 열어주세요');
+            return;
+        }
+        
+        try {
             const appData = {
                 photos: this.photos,
                 texts: this.texts
             };
             
-            window.saveToDrive(appData, window.currentDriveFile.name).catch(error => {
-                console.error('자동 저장 실패:', error);
+            console.log('📦 저장할 데이터:', {
+                photosCount: this.photos.length,
+                textsCount: this.texts.length,
+                fileName: window.currentDriveFile.name
             });
-        } else {
-            console.warn('⚠️ Google Drive 저장 건너뜀 (로컬 파일 또는 로그인 안 됨)');
+            
+            const success = await window.saveToDrive(appData, window.currentDriveFile.name);
+            
+            if (success) {
+                console.log('✅ 자동 저장 완료');
+                this.showToast('💾 저장 완료');
+            } else {
+                console.error('❌ 자동 저장 실패 (false 반환)');
+                this.showToast('⚠️ 저장 실패: 다시 시도해주세요');
+            }
+        } catch (error) {
+            console.error('❌ 자동 저장 오류:', error);
+            this.showToast(`⚠️ 저장 실패: ${error.message}`);
         }
+    }
+    
+    /**
+     * 토스트 메시지 표시
+     */
+    showToast(message) {
+        // 기존 토스트 제거
+        const existingToast = document.querySelector('.toast-message');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        // 새 토스트 생성
+        const toast = document.createElement('div');
+        toast.className = 'toast-message';
+        toast.textContent = message;
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 24px;
+            font-size: 15px;
+            z-index: 99999;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            animation: toastFadeInOut 2.5s ease-in-out forwards;
+        `;
+        
+        // 애니메이션 CSS 추가 (한 번만)
+        if (!document.getElementById('toast-animation-style')) {
+            const style = document.createElement('style');
+            style.id = 'toast-animation-style';
+            style.textContent = `
+                @keyframes toastFadeInOut {
+                    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+                    10% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                    90% { opacity: 1; transform: translateX(-50%) translateY(0); }
+                    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        document.body.appendChild(toast);
+        
+        // 2.5초 후 자동 제거
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.remove();
+            }
+        }, 2500);
     }
     
     /**
