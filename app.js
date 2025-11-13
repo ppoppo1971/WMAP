@@ -2143,6 +2143,7 @@ class DxfPhotoEditor {
     
     /**
      * 사진을 이모지(📷)로 표시 (최적화: rect 캐싱)
+     * 수정: 파란색 원형 제거, 고정 크기 (30px)
      */
     drawPhotos() {
         const rect = this.getCachedRect();
@@ -2160,28 +2161,19 @@ class DxfPhotoEditor {
                 height: photo.height
             });
             
-            // ViewBox 좌표 → 스크린 좌표 변환
+            // ViewBox 좌표 → 스크린 좌표 변환 (사진의 중심점)
             const centerX = ((photo.x + photo.width / 2 - this.viewBox.x) / this.viewBox.width) * rect.width;
             const centerY = ((photo.y + photo.height / 2 - this.viewBox.y) / this.viewBox.height) * rect.height;
             
             console.log(`                  스크린 좌표: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})`);
             
-            // 이모지 크기 (ViewBox에 비례)
-            const emojiSize = Math.max(40, (photo.width / this.viewBox.width) * rect.width);
-            console.log(`                  이모지 크기: ${emojiSize.toFixed(1)}px`);
+            // 이모지 크기 고정 (30px)
+            const emojiSize = 30;
+            console.log(`                  이모지 크기: ${emojiSize}px (고정)`);
             
             this.ctx.save();
             
-            // 배경 원 (하얀색)
-            this.ctx.fillStyle = 'white';
-            this.ctx.beginPath();
-            this.ctx.arc(centerX, centerY, emojiSize / 2 + 5, 0, Math.PI * 2);
-            this.ctx.fill();
-            
-            // 테두리 (파란색)
-            this.ctx.strokeStyle = '#007AFF';
-            this.ctx.lineWidth = 3;
-            this.ctx.stroke();
+            // 파란색 원형 제거 - 이모지만 표시
             
             // 카메라 이모지 표시
             this.ctx.font = `${emojiSize}px Arial`;
@@ -2191,8 +2183,8 @@ class DxfPhotoEditor {
             
             // 메모 아이콘 (메모가 있는 경우)
             if (photo.memo && photo.memo.trim()) {
-                this.ctx.font = `${emojiSize * 0.4}px Arial`;
-                this.ctx.fillText('📝', centerX + emojiSize / 2, centerY - emojiSize / 2);
+                this.ctx.font = `${emojiSize * 0.5}px Arial`;
+                this.ctx.fillText('📝', centerX + emojiSize * 0.4, centerY - emojiSize * 0.4);
             }
             
             this.ctx.restore();
@@ -2248,9 +2240,15 @@ class DxfPhotoEditor {
             const image = await this.loadImage(imageData);
             console.log('   ✓ 이미지 로드 완료 (크기:', image.width, 'x', image.height, ')');
             
-            // 사진 크기를 ViewBox 크기의 10%로 설정
-            const photoWidth = this.viewBox.width * 0.1;
-            const photoHeight = (image.height / image.width) * photoWidth;
+            // 이미지 압축 (500KB 이하로)
+            this.showToast('🔄 이미지 변환 중...');
+            console.log('3️⃣ 이미지 압축 시작...');
+            const compressedImageData = await this.compressImage(image, file.name, 500 * 1024); // 500KB
+            console.log('   ✓ 이미지 압축 완료 (압축 크기:', compressedImageData.length, ')');
+            
+            // 사진 크기를 작고 고정 (원본 ViewBox 크기의 1%)
+            const photoWidth = this.originalViewBox.width * 0.01;
+            const photoHeight = photoWidth; // 정사각형으로 통일
             
             const photo = {
                 id: Date.now(),
@@ -2258,13 +2256,13 @@ class DxfPhotoEditor {
                 y: position.y - photoHeight / 2,
                 width: photoWidth,
                 height: photoHeight,
-                imageData: imageData,
+                imageData: compressedImageData, // 압축된 이미지 사용
                 image: image,
                 memo: '',
                 fileName: file.name
             };
             
-            console.log('3️⃣ 사진 객체 생성 완료:', {
+            console.log('4️⃣ 사진 객체 생성 완료:', {
                 id: photo.id,
                 x: photo.x,
                 y: photo.y,
@@ -2274,18 +2272,19 @@ class DxfPhotoEditor {
             });
             
             this.photos.push(photo);
-            console.log(`4️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
+            console.log(`5️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
             console.log('   현재 사진 목록:', this.photos.map(p => ({ id: p.id, fileName: p.fileName })));
             
-            console.log('5️⃣ 화면 다시 그리기 시작...');
+            console.log('6️⃣ 화면 다시 그리기 시작...');
             this.redraw();
             console.log('   ✓ 화면 다시 그리기 완료');
             
             console.log('✅ 사진 추가 완료:', photo.fileName);
-            this.showToast(`✅ 사진 추가됨: ${file.name}`);
+            this.showToast(`✅ 사진 추가됨`);
             
             // Google Drive 자동 저장
-            console.log('6️⃣ 자동 저장 시작...');
+            console.log('7️⃣ 자동 저장 시작...');
+            this.showToast('☁️ Google Drive 업로드 중...');
             await this.autoSave();
             
         } catch (error) {
@@ -2338,6 +2337,66 @@ class DxfPhotoEditor {
                 reject(new Error('이미지 로드 실패'));
             };
             img.src = src;
+        });
+    }
+    
+    /**
+     * 이미지 압축 (목표 크기 이하로)
+     * @param {Image} image - 원본 이미지 객체
+     * @param {string} fileName - 파일 이름
+     * @param {number} targetSize - 목표 크기 (bytes)
+     * @returns {Promise<string>} 압축된 이미지 Data URL
+     */
+    async compressImage(image, fileName, targetSize) {
+        return new Promise((resolve, reject) => {
+            try {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // 최대 크기 제한 (긴 쪽 기준 1920px)
+                const maxDimension = 1920;
+                let width = image.width;
+                let height = image.height;
+                
+                if (width > maxDimension || height > maxDimension) {
+                    if (width > height) {
+                        height = (height / width) * maxDimension;
+                        width = maxDimension;
+                    } else {
+                        width = (width / height) * maxDimension;
+                        height = maxDimension;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                console.log('   압축 캔버스 크기:', width, 'x', height);
+                
+                // 이미지 그리기
+                ctx.drawImage(image, 0, 0, width, height);
+                
+                // 품질을 조절하며 압축 (0.9부터 시작하여 감소)
+                let quality = 0.9;
+                let compressedData = canvas.toDataURL('image/jpeg', quality);
+                
+                console.log(`   초기 압축 (품질 ${quality}):`, compressedData.length, 'bytes');
+                
+                // 목표 크기보다 크면 품질을 낮춤
+                while (compressedData.length > targetSize && quality > 0.1) {
+                    quality -= 0.1;
+                    compressedData = canvas.toDataURL('image/jpeg', quality);
+                    console.log(`   재압축 (품질 ${quality.toFixed(1)}):`, compressedData.length, 'bytes');
+                }
+                
+                const finalSizeKB = (compressedData.length / 1024).toFixed(2);
+                console.log(`   ✅ 최종 압축 완료: ${finalSizeKB}KB (품질: ${quality.toFixed(1)})`);
+                
+                resolve(compressedData);
+            } catch (error) {
+                console.error('   ❌ 이미지 압축 오류:', error);
+                reject(new Error('이미지 압축 실패: ' + error.message));
+            }
         });
     }
     
@@ -2851,10 +2910,10 @@ class DxfPhotoEditor {
             
             if (success) {
                 console.log('✅ 자동 저장 완료');
-                this.showToast('💾 저장 완료');
+                this.showToast('✅ 업로드 완료!');
             } else {
                 console.error('❌ 자동 저장 실패 (false 반환)');
-                this.showToast('⚠️ 저장 실패: 다시 시도해주세요');
+                this.showToast('⚠️ 업로드 실패');
             }
         } catch (error) {
             console.error('❌ 자동 저장 오류:', error);
