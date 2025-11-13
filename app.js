@@ -68,6 +68,7 @@ class DxfPhotoEditor {
         
         // 텍스트 관련
         this.texts = []; // { id, x, y, text, fontSize }
+        this.metadataDirty = false;
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -698,37 +699,6 @@ class DxfPhotoEditor {
             console.warn('⚠️ delete-photo-btn 버튼을 찾을 수 없습니다 (사진 보기 모달)');
         }
 
-        const photoActionModal = document.getElementById('photo-action-modal');
-        if (photoActionModal) {
-            photoActionModal.addEventListener('click', (e) => {
-                if (e.target === photoActionModal) {
-                    this.closePhotoActionModal();
-                }
-            });
-        }
-
-        const closePhotoActionBtn = document.getElementById('close-photo-action');
-        if (closePhotoActionBtn) {
-            closePhotoActionBtn.addEventListener('click', () => {
-                this.closePhotoActionModal();
-            });
-        }
-
-        const photoActionViewBtn = document.getElementById('photo-action-view-btn');
-        if (photoActionViewBtn) {
-            photoActionViewBtn.addEventListener('click', () => {
-                this.closePhotoActionModal();
-                this.openPhotoViewModal(this.selectedPhotoId);
-            });
-        }
-
-        const photoActionDeleteBtn = document.getElementById('photo-action-delete-btn');
-        if (photoActionDeleteBtn) {
-            photoActionDeleteBtn.addEventListener('click', () => {
-                this.closePhotoActionModal();
-                this.deletePhoto();
-            });
-        }
     }
     
     /**
@@ -1026,6 +996,7 @@ class DxfPhotoEditor {
         };
         
         this.texts.push(textObj);
+        this.metadataDirty = true;
         
         console.log('📝 텍스트 추가:', textObj);
         
@@ -1354,6 +1325,7 @@ class DxfPhotoEditor {
             // 사진/텍스트 데이터 초기화 (메타데이터 로드 전)
             this.photos = [];
             this.texts = [];
+            this.metadataDirty = false;
             
             // DXF 파싱 및 렌더링
             this.loadDxfFromText(fileContent, file.name);
@@ -1451,6 +1423,8 @@ class DxfPhotoEditor {
                 this.showToast(`✅ 데이터 로드 완료 (사진: ${this.photos.length}, 텍스트: ${this.texts.length})`);
             }
             
+            this.metadataDirty = false;
+            
         } catch (error) {
             console.error('❌ 메타데이터 로드 실패:', error);
             // 실패해도 계속 진행 (선택적 기능)
@@ -1495,6 +1469,7 @@ class DxfPhotoEditor {
             // 사진/텍스트 데이터 초기화 (로컬 파일에는 메타데이터 없음)
             this.photos = [];
             this.texts = [];
+            this.metadataDirty = false;
             console.log('   사진/텍스트 데이터 초기화');
             
             // 1. 파일 읽기
@@ -2352,8 +2327,11 @@ class DxfPhotoEditor {
             
             this.ctx.save();
             
+            const hasMemo = photo.memo && photo.memo.trim();
+            const markerColor = hasMemo ? '#9B51E0' : '#FF0000';
+            
             // 작은 원으로 표시 (7.5px 고정)
-            this.ctx.fillStyle = '#FF0000'; // 빨간색
+            this.ctx.fillStyle = markerColor;
             this.ctx.beginPath();
             this.ctx.arc(screenX, screenY, 3.75, 0, Math.PI * 2); // 반지름 3.75px (직경 7.5px)
             this.ctx.fill();
@@ -2362,14 +2340,6 @@ class DxfPhotoEditor {
             this.ctx.strokeStyle = '#FFFFFF';
             this.ctx.lineWidth = 2;
             this.ctx.stroke();
-            
-            // 메모가 있으면 작은 점 추가
-            if (photo.memo && photo.memo.trim()) {
-                this.ctx.fillStyle = '#0000FF';
-                this.ctx.beginPath();
-                this.ctx.arc(screenX + 10, screenY - 10, 3, 0, Math.PI * 2);
-                this.ctx.fill();
-            }
             
             this.ctx.restore();
         });
@@ -2459,6 +2429,7 @@ class DxfPhotoEditor {
             });
             
             this.photos.push(photo);
+            this.metadataDirty = true;
             console.log(`5️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
             console.log('   현재 사진 목록:', this.photos.map(p => ({ id: p.id, fileName: p.fileName })));
             
@@ -2994,7 +2965,7 @@ class DxfPhotoEditor {
             
             if (distance <= clickRadius) {
                 console.log(`✅ 사진 ${photo.id} 클릭됨!`);
-                this.openPhotoActionModal(photo.id);
+                this.openPhotoViewModal(photo.id);
                 return true;
             }
         }
@@ -3037,21 +3008,6 @@ class DxfPhotoEditor {
         document.getElementById('photo-view-modal').classList.add('active');
     }
     
-    openPhotoActionModal(photoId) {
-        const photo = this.photos.find(p => p.id === photoId);
-        if (!photo) return;
-
-        this.selectedPhotoId = photoId;
-        document.getElementById('photo-action-modal').classList.add('active');
-    }
-
-    closePhotoActionModal() {
-        const modal = document.getElementById('photo-action-modal');
-        if (modal) {
-            modal.classList.remove('active');
-        }
-    }
-
     /**
      * 사진 보기 모달 닫기
      */
@@ -3098,6 +3054,7 @@ class DxfPhotoEditor {
         if (!photo) return;
         
         photo.memo = document.getElementById('memo-text').value;
+        this.metadataDirty = true;
         this.closeMemoModal();
         alert('메모가 저장되었습니다!');
         
@@ -3130,6 +3087,7 @@ class DxfPhotoEditor {
             // 로컬 배열에서 제거
             this.photos = this.photos.filter(p => p.id !== this.selectedPhotoId);
             console.log('   ✅ 로컬 배열에서 제거 완료');
+            this.metadataDirty = true;
             
             this.closePhotoViewModal();
             this.redraw();
@@ -3169,6 +3127,8 @@ class DxfPhotoEditor {
         try {
             // 업로드되지 않은 사진만 필터링
             const newPhotos = this.photos.filter(p => !p.uploaded);
+            const hasNewPhotos = newPhotos.length > 0;
+            const needsMetadataUpdate = this.metadataDirty || hasNewPhotos;
             
             console.log('📦 저장할 데이터:', {
                 totalPhotosCount: this.photos.length,
@@ -3177,8 +3137,8 @@ class DxfPhotoEditor {
                 fileName: window.currentDriveFile.name
             });
             
-            // 새로운 사진이 있을 때만 업로드
-            if (newPhotos.length > 0 || this.texts.length > 0) {
+            // 새로운 사진이 있거나 메타데이터가 변경되었을 때만 업로드
+            if (needsMetadataUpdate) {
                 const appData = {
                     photos: newPhotos,  // 새로운 사진만
                     allPhotos: this.photos,  // 전체 사진 목록 (메타데이터용)
@@ -3192,6 +3152,7 @@ class DxfPhotoEditor {
                     newPhotos.forEach(photo => {
                         photo.uploaded = true;
                     });
+                    this.metadataDirty = false;
                     console.log('✅ 자동 저장 완료');
                     this.showToast('✅ 저장 완료');
                 } else {
@@ -3199,7 +3160,7 @@ class DxfPhotoEditor {
                     this.showToast('⚠️ 저장 실패');
                 }
             } else {
-                console.log('⏭️ 새로운 사진/텍스트 없음 - 업로드 스킵');
+                console.log('⏭️ 새로운 사진/메타데이터 변경 없음 - 업로드 스킵');
             }
         } catch (error) {
             console.error('❌ 자동 저장 오류:', error);

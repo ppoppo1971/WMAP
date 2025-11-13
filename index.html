@@ -205,10 +205,9 @@
             display: flex;
         }
 
-    /* 사진 액션 모달을 뷰어 UI보다 위로 띄우기 */
-    .photo-action-modal {
-        z-index: 10002;
-    }
+        .photo-modal {
+            z-index: 10050;
+        }
 
         .modal-content {
             background: white;
@@ -833,7 +832,7 @@
     <input type="file" id="gallery-input" accept="image/*" style="display: none;">
 
     <!-- 사진 보기 모달 -->
-    <div class="modal" id="photo-view-modal">
+    <div class="modal photo-modal" id="photo-view-modal">
         <div class="modal-content photo-modal-content">
             <div class="modal-header">
                 <h2>📷 사진</h2>
@@ -846,20 +845,6 @@
             <div class="photo-modal-buttons">
                 <button class="btn" id="edit-photo-memo-btn" style="background: #34C759;">메모 편집</button>
                 <button class="btn" id="delete-photo-btn" style="background: #FF3B30;">사진 삭제</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 사진 선택 모달 -->
-    <div class="modal photo-action-modal" id="photo-action-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>📷 사진</h2>
-                <span class="close-btn" id="close-photo-action">&times;</span>
-            </div>
-            <div class="photo-modal-buttons">
-                <button class="btn" id="photo-action-view-btn" style="background: #007AFF;">보기</button>
-                <button class="btn" id="photo-action-delete-btn" style="background: #FF3B30;">삭제</button>
             </div>
         </div>
     </div>
