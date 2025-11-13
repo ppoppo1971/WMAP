@@ -1245,33 +1245,30 @@ class DxfPhotoEditor {
                     // DXF 파일은 뷰어로 열기
                     await this.openDxfFromDrive(file);
                 } else if (isImage) {
-                    // 이미지 파일은 새 탭에서 열기
-                    this.showToast('🖼️ 이미지 다운로드 중...');
+                    // 이미지 파일은 현재 탭에서 열기
+                    this.showToast('🖼️ 이미지 로딩 중...');
                     try {
-                        const content = await window.downloadDxfFile(file.id);
-                        const link = document.createElement('a');
-                        link.href = content;
-                        link.download = file.name;
-                        link.target = '_blank';
-                        link.click();
-                        this.showToast('✅ 다운로드 완료');
+                        const blob = await window.driveManager.downloadFileAsBlob(file.id);
+                        const blobUrl = URL.createObjectURL(blob);
+                        
+                        // 현재 탭에서 이미지 열기 (뒤로 가기로 복귀 가능)
+                        window.location.href = blobUrl;
                     } catch (error) {
-                        console.error('파일 다운로드 실패:', error);
-                        this.showToast('⚠️ 다운로드 실패');
+                        console.error('이미지 열기 실패:', error);
+                        this.showToast('⚠️ 이미지 열기 실패');
                     }
                 } else {
-                    // 다른 파일은 다운로드
-                    this.showToast('📥 파일 다운로드 중...');
+                    // 다른 파일은 현재 탭에서 열기
+                    this.showToast('📄 파일 로딩 중...');
                     try {
-                        const content = await window.downloadDxfFile(file.id);
-                        const link = document.createElement('a');
-                        link.href = URL.createObjectURL(new Blob([content]));
-                        link.download = file.name;
-                        link.click();
-                        this.showToast('✅ 다운로드 완료');
+                        const blob = await window.driveManager.downloadFileAsBlob(file.id);
+                        const blobUrl = URL.createObjectURL(blob);
+                        
+                        // 현재 탭에서 파일 열기 (뒤로 가기로 복귀 가능)
+                        window.location.href = blobUrl;
                     } catch (error) {
-                        console.error('파일 다운로드 실패:', error);
-                        this.showToast('⚠️ 다운로드 실패');
+                        console.error('파일 열기 실패:', error);
+                        this.showToast('⚠️ 파일 열기 실패');
                     }
                 }
             });

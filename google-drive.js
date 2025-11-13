@@ -155,7 +155,7 @@ class GoogleDriveManager {
     }
 
     /**
-     * 파일 다운로드
+     * 파일 다운로드 (텍스트)
      */
     async downloadFile(fileId) {
         this.ensureAuthenticated();
@@ -176,6 +176,30 @@ class GoogleDriveManager {
 
         console.log('✅ 다운로드 완료');
         return await response.text();
+    }
+
+    /**
+     * 파일 다운로드 (Blob)
+     */
+    async downloadFileAsBlob(fileId) {
+        this.ensureAuthenticated();
+
+        console.log('📥 파일 다운로드 중 (Blob)...');
+
+        const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${this.apiKey}`;
+
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${this.accessToken}`,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`파일 다운로드 실패: ${response.statusText}`);
+        }
+
+        console.log('✅ 다운로드 완료 (Blob)');
+        return await response.blob();
     }
 
     /**
