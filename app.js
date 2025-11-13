@@ -1767,6 +1767,10 @@ class DxfPhotoEditor {
             this.svg.setAttribute('viewBox', 
                 `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.width} ${this.viewBox.height}`);
             
+            // ⚠️ CRITICAL: rect 캐시 무효화 (ViewBox 변경 직후 최신 rect 필요)
+            this.cachedRect = null;
+            this.rectCacheTime = 0;
+            
             // Canvas 사진만 다시 그리기 (빠름)
             this.drawPhotosCanvas();
         });
@@ -2213,9 +2217,19 @@ class DxfPhotoEditor {
     
     drawPhotosCanvas() {
         console.log('         🖼️ drawPhotosCanvas 시작');
+        
+        // Canvas와 SVG 크기 확인 및 동기화
+        const svgRect = this.svg.getBoundingClientRect();
+        if (this.canvas.width !== svgRect.width || this.canvas.height !== svgRect.height) {
+            console.warn(`         ⚠️ Canvas 크기 불일치! Canvas(${this.canvas.width}x${this.canvas.height}) vs SVG(${svgRect.width.toFixed(0)}x${svgRect.height.toFixed(0)})`);
+            console.warn(`         → Canvas 크기 조정 중...`);
+            this.canvas.width = svgRect.width;
+            this.canvas.height = svgRect.height;
+        }
+        
         // Canvas 초기화 (투명) - 한 번에 처리
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        console.log('            Canvas 초기화 완료 (크기:', this.canvas.width, 'x', this.canvas.height, ')');
+        console.log(`            Canvas 준비 완료 (크기: ${this.canvas.width}x${this.canvas.height})`);
         
         // 사진과 텍스트가 없으면 빠르게 리턴
         if (this.photos.length === 0 && this.texts.length === 0) {
@@ -2235,10 +2249,11 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 텍스트 그리기 (최적화: rect 캐싱)
+     * 텍스트 그리기
      */
     drawTexts() {
-        const rect = this.getCachedRect();
+        // ⚠️ CRITICAL: 항상 최신 rect 사용 (캐시 사용 안 함)
+        const rect = this.svg.getBoundingClientRect();
         
         this.texts.forEach(textObj => {
             // ViewBox 좌표 → 스크린 좌표 변환
@@ -2287,11 +2302,14 @@ class DxfPhotoEditor {
             return;
         }
         
-        const rect = this.getCachedRect();
+        // ⚠️ CRITICAL: 항상 최신 rect 사용 (캐시 사용 안 함)
+        // ViewBox 변경 직후 호출되므로 캐시된 rect는 부정확할 수 있음
+        const rect = this.svg.getBoundingClientRect();
+        
         console.log('📷 drawPhotos 실행:');
         console.log(`   사진 개수: ${this.photos.length}`);
         console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(2)}, y=${this.viewBox.y.toFixed(2)}, w=${this.viewBox.width.toFixed(2)}, h=${this.viewBox.height.toFixed(2)}`);
-        console.log(`   화면 크기: ${rect.width}x${rect.height}`);
+        console.log(`   SVG 화면 크기: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
         
         this.photos.forEach((photo, index) => {
             // DXF 절대 좌표 → 스크린 좌표 변환
@@ -2312,22 +2330,22 @@ class DxfPhotoEditor {
             
             this.ctx.save();
             
-            // 작은 원으로 표시 (1.5px 고정 - 기존의 10%)
+            // 원으로 표시 (5px 고정)
             this.ctx.fillStyle = '#FF0000'; // 빨간색
             this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, 0.75, 0, Math.PI * 2); // 반지름 0.75px (직경 1.5px)
+            this.ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2); // 반지름 2.5px (직경 5px)
             this.ctx.fill();
             
             // 테두리 (흰색, 더 잘 보이게)
             this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = 0.2; // 테두리도 비례해서 축소
+            this.ctx.lineWidth = 0.5;
             this.ctx.stroke();
             
             // 메모가 있으면 작은 점 추가
             if (photo.memo && photo.memo.trim()) {
                 this.ctx.fillStyle = '#0000FF';
                 this.ctx.beginPath();
-                this.ctx.arc(screenX + 1, screenY - 1, 0.3, 0, Math.PI * 2); // 메모 표시도 축소
+                this.ctx.arc(screenX + 4, screenY - 4, 1.5, 0, Math.PI * 2);
                 this.ctx.fill();
             }
             
