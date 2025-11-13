@@ -423,7 +423,7 @@ class DxfPhotoEditor {
         // 슬라이딩 메뉴 - 목록으로 돌아가기
         const menuBackBtn = document.getElementById('menu-back-to-list');
         const menuFitViewBtn = document.getElementById('menu-fit-view');
-        const menuLogoutBtn = document.getElementById('menu-logout');
+        const menuClearCacheBtn = document.getElementById('menu-clear-cache');
         
         menuBackBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -438,14 +438,14 @@ class DxfPhotoEditor {
             this.redraw();
         });
         
-        menuLogoutBtn.addEventListener('click', async (e) => {
+        menuClearCacheBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             this.closeSlideMenu();
-            await this.logout();
+            await this.clearCacheAndReload();
         });
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuLogoutBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuClearCacheBtn].forEach(btn => {
             btn.addEventListener('touchstart', (e) => {
                 e.stopPropagation();
             }, { passive: false });
@@ -467,14 +467,6 @@ class DxfPhotoEditor {
         this.svg.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
         this.svg.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
         this.svg.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
-        
-        // contextmenu 이벤트 방지 (롱프레스 시 브라우저 메뉴 대신 커스텀 메뉴)
-        this.svg.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            console.log('🚫 SVG contextmenu 차단됨');
-            return false;
-        }, { passive: false });
         
         // 사진 클릭은 SVG 클릭 이벤트에서 처리 (Canvas는 pointer-events: none 유지)
         this.svg.addEventListener('click', this.onCanvasClick.bind(this));
@@ -717,8 +709,6 @@ class DxfPhotoEditor {
      * 롱프레스 시작
      */
     startLongPress(clientX, clientY) {
-        console.log('⏱️ startLongPress 호출됨 - 타이머 시작');
-        
         // 기존 타이머 취소
         this.cancelLongPress();
         
@@ -726,25 +716,16 @@ class DxfPhotoEditor {
         this.longPressPosition.screenX = clientX;
         this.longPressPosition.screenY = clientY;
         
-        // DXF 절대 좌표로 변환
-        // ViewBox는 DXF의 실제 좌표 범위를 나타냄
-        // 따라서 이 변환은 스크린 → DXF 실제 절대 좌표
+        // ViewBox 좌표로 변환
         const rect = this.svg.getBoundingClientRect();
-        const dxfX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
-        const dxfY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+        const svgX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
+        const svgY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
         
-        this.longPressPosition.x = dxfX;
-        this.longPressPosition.y = dxfY;
-        
-        console.log('🖱️ 롱프레스 좌표 변환:');
-        console.log(`   스크린: (${clientX.toFixed(0)}, ${clientY.toFixed(0)})`);
-        console.log(`   DXF 절대좌표: (${dxfX.toFixed(2)}, ${dxfY.toFixed(2)})`);
-        console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(2)}, y=${this.viewBox.y.toFixed(2)}, w=${this.viewBox.width.toFixed(2)}, h=${this.viewBox.height.toFixed(2)}`);
+        this.longPressPosition.x = svgX;
+        this.longPressPosition.y = svgY;
         
         // 타이머 시작
-        console.log(`⏱️ 롱프레스 타이머 설정 (${this.longPressDuration}ms)`);
         this.longPressTimer = setTimeout(() => {
-            console.log('⏱️ 롱프레스 타이머 완료 - onLongPress 호출');
             this.onLongPress();
         }, this.longPressDuration);
     }
@@ -754,7 +735,6 @@ class DxfPhotoEditor {
      */
     cancelLongPress() {
         if (this.longPressTimer) {
-            console.log('⏱️ 롱프레스 타이머 취소됨');
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
         }
@@ -1080,30 +1060,14 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 로그아웃 (로그인 토큰 삭제 및 페이지 새로고침)
+     * 캐시 삭제 및 현재 도면 새로고침
      */
-    async logout() {
+    async clearCacheAndReload() {
         try {
-            console.log('🚪 로그아웃 시작...');
-            
-            const confirmed = confirm('로그아웃 하시겠습니까?\n\n저장되지 않은 변경사항은 손실됩니다.\n페이지가 새로고침되어 최신 코드가 로드됩니다.');
-            
-            if (!confirmed) {
-                console.log('❌ 로그아웃 취소됨');
-                return;
-            }
-            
+            console.log('🗑️ 캐시 삭제 시작...');
             this.showLoading(true);
             
-            // Google Drive 토큰 삭제
-            if (window.driveManager) {
-                window.driveManager.clearTokenFromStorage();
-                window.driveManager.accessToken = null;
-                window.driveManager.initialized = false;
-                console.log('✅ Google Drive 토큰 삭제됨');
-            }
-            
-            // Service Worker 캐시 삭제 (깃허브 최신 코드 로드를 위해)
+            // Service Worker 캐시 삭제
             if ('caches' in window) {
                 const cacheNames = await caches.keys();
                 console.log(`📦 발견된 캐시: ${cacheNames.length}개`);
@@ -1114,14 +1078,46 @@ class DxfPhotoEditor {
                 }
             }
             
-            console.log('✅ 로그아웃 완료 - 페이지를 새로고침합니다');
+            // 현재 도면 정보 저장
+            const currentDxfData = this.dxfData;
+            const currentPhotos = [...this.photos];
+            const currentViewBox = {...this.viewBox};
+            const currentFileName = this.currentFileName;
+            const currentFileId = this.currentFileId;
             
-            // 페이지 새로고침 (깃허브 최신 코드 로드)
-            window.location.reload(true);
+            console.log('💾 현재 도면 상태 저장 완료');
+            console.log(`  - 파일명: ${currentFileName}`);
+            console.log(`  - 사진 개수: ${currentPhotos.length}`);
+            
+            // 잠시 대기 (캐시 삭제 완료 확인)
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // 현재 도면 다시 로드
+            if (currentDxfData) {
+                console.log('🔄 도면 새로고침 중...');
+                
+                // 도면 정보 복원
+                this.dxfData = currentDxfData;
+                this.photos = currentPhotos;
+                this.viewBox = currentViewBox;
+                this.currentFileName = currentFileName;
+                this.currentFileId = currentFileId;
+                
+                // 화면 다시 그리기
+                this.redraw();
+                
+                console.log('✅ 캐시 삭제 및 새로고침 완료');
+                alert('캐시가 삭제되었습니다.');
+            } else {
+                console.log('⚠️ 현재 열린 도면이 없습니다.');
+                alert('캐시가 삭제되었습니다.');
+            }
+            
+            this.showLoading(false);
             
         } catch (error) {
-            console.error('❌ 로그아웃 실패:', error);
-            this.showToast('⚠️ 로그아웃 중 오류 발생');
+            console.error('❌ 캐시 삭제 실패:', error);
+            alert('캐시 삭제 중 오류가 발생했습니다.');
             this.showLoading(false);
         }
     }
@@ -1780,10 +1776,6 @@ class DxfPhotoEditor {
             this.svg.setAttribute('viewBox', 
                 `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.width} ${this.viewBox.height}`);
             
-            // ⚠️ CRITICAL: rect 캐시 무효화 (ViewBox 변경 직후 최신 rect 필요)
-            this.cachedRect = null;
-            this.rectCacheTime = 0;
-            
             // Canvas 사진만 다시 그리기 (빠름)
             this.drawPhotosCanvas();
         });
@@ -2230,19 +2222,9 @@ class DxfPhotoEditor {
     
     drawPhotosCanvas() {
         console.log('         🖼️ drawPhotosCanvas 시작');
-        
-        // Canvas와 SVG 크기 확인 및 동기화
-        const svgRect = this.svg.getBoundingClientRect();
-        if (this.canvas.width !== svgRect.width || this.canvas.height !== svgRect.height) {
-            console.warn(`         ⚠️ Canvas 크기 불일치! Canvas(${this.canvas.width}x${this.canvas.height}) vs SVG(${svgRect.width.toFixed(0)}x${svgRect.height.toFixed(0)})`);
-            console.warn(`         → Canvas 크기 조정 중...`);
-            this.canvas.width = svgRect.width;
-            this.canvas.height = svgRect.height;
-        }
-        
         // Canvas 초기화 (투명) - 한 번에 처리
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        console.log(`            Canvas 준비 완료 (크기: ${this.canvas.width}x${this.canvas.height})`);
+        console.log('            Canvas 초기화 완료 (크기:', this.canvas.width, 'x', this.canvas.height, ')');
         
         // 사진과 텍스트가 없으면 빠르게 리턴
         if (this.photos.length === 0 && this.texts.length === 0) {
@@ -2262,11 +2244,10 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 텍스트 그리기
+     * 텍스트 그리기 (최적화: rect 캐싱)
      */
     drawTexts() {
-        // ⚠️ CRITICAL: 항상 최신 rect 사용 (캐시 사용 안 함)
-        const rect = this.svg.getBoundingClientRect();
+        const rect = this.getCachedRect();
         
         this.texts.forEach(textObj => {
             // ViewBox 좌표 → 스크린 좌표 변환
@@ -2301,80 +2282,57 @@ class DxfPhotoEditor {
     
     /**
      * 사진을 작은 점(●)으로 표시
-     * 
-     * 중요: photo.x, photo.y는 DXF의 실제 절대 좌표입니다!
-     * - ViewBox는 DXF 파일의 실제 좌표 범위를 나타냄
-     * - photo.x, photo.y는 DXF 도면상의 절대 위치 (단위: mm 또는 도면 단위)
-     * - 확대/축소/이동해도 동일한 DXF 위치에 고정됨
-     * 
-     * 좌표 변환: DXF 절대 좌표 → 스크린 픽셀
+     * 수정: 
+     * - 이모지 대신 작은 점(●) 사용
+     * - 크기 15px로 고정 (가시성 확보)
+     * - ViewBox 좌표에 완전 고정
      */
     drawPhotos() {
-        if (!this.svg) {
-            console.warn('⚠️ SVG가 없어서 사진을 그릴 수 없습니다');
-            return;
-        }
-        
-        // ⚠️ CRITICAL: 항상 최신 rect 사용 (캐시 사용 안 함)
-        // ViewBox 변경 직후 호출되므로 캐시된 rect는 부정확할 수 있음
-        const rect = this.svg.getBoundingClientRect();
-        
-        console.log('📷 drawPhotos 실행:');
-        console.log(`   사진 개수: ${this.photos.length}`);
-        console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(2)}, y=${this.viewBox.y.toFixed(2)}, w=${this.viewBox.width.toFixed(2)}, h=${this.viewBox.height.toFixed(2)}`);
-        console.log(`   SVG 화면 크기: ${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`);
+        const rect = this.getCachedRect();
+        console.log('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
         
         this.photos.forEach((photo, index) => {
-            // DXF 절대 좌표 → 스크린 좌표 변환
-            // photo.x, photo.y = DXF 도면의 절대 위치 (변하지 않음)
-            // ViewBox = 현재 보고 있는 DXF 범위 (확대/축소/이동으로 변함)
+            // ViewBox 좌표 → 스크린 좌표 변환
+            // photo.x, photo.y는 ViewBox 좌표계에 고정
             const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
             const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
             
-            console.log(`   사진 ${index + 1}:`);
-            console.log(`      DXF 절대좌표: (${photo.x.toFixed(2)}, ${photo.y.toFixed(2)})`);
-            console.log(`      변환 계산:`);
-            console.log(`         X: (${photo.x.toFixed(2)} - ${this.viewBox.x.toFixed(2)}) / ${this.viewBox.width.toFixed(2)} * ${rect.width.toFixed(2)} = ${screenX.toFixed(2)}`);
-            console.log(`         Y: (${photo.y.toFixed(2)} - ${this.viewBox.y.toFixed(2)}) / ${this.viewBox.height.toFixed(2)} * ${rect.height.toFixed(2)} = ${screenY.toFixed(2)}`);
-            console.log(`      최종 스크린 좌표: (${screenX.toFixed(2)}, ${screenY.toFixed(2)})`);
-            
             // 화면 밖에 있으면 그리지 않음
             if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
-                console.log(`      → 화면 밖이므로 스킵`);
                 return;
             }
             
             this.ctx.save();
             
-            // 원으로 표시 (50px 고정 - 10배 크게)
+            // 작은 원으로 표시 (15px 고정)
             this.ctx.fillStyle = '#FF0000'; // 빨간색
             this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, 25, 0, Math.PI * 2); // 반지름 25px (직경 50px)
+            this.ctx.arc(screenX, screenY, 7.5, 0, Math.PI * 2); // 반지름 7.5px (직경 15px)
             this.ctx.fill();
             
             // 테두리 (흰색, 더 잘 보이게)
             this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = 3;
+            this.ctx.lineWidth = 2;
             this.ctx.stroke();
             
             // 메모가 있으면 작은 점 추가
             if (photo.memo && photo.memo.trim()) {
                 this.ctx.fillStyle = '#0000FF';
                 this.ctx.beginPath();
-                this.ctx.arc(screenX + 20, screenY - 20, 8, 0, Math.PI * 2);
+                this.ctx.arc(screenX + 10, screenY - 10, 3, 0, Math.PI * 2);
                 this.ctx.fill();
             }
             
             this.ctx.restore();
         });
         
-        console.log('✅ drawPhotos 완료');
+        console.log('               ✅ drawPhotos 완료 - 총', this.photos.length, '개 그림');
     }
     
     /**
      * 특정 위치에 사진 추가
      * @param {File} file - 이미지 파일
-     * @param {Object} position - {x, y} DXF 절대 좌표 (ViewBox 좌표 = DXF 실제 좌표)
+     * @param {Object} position - {x, y} ViewBox 좌표
      */
     async addPhotoAt(file, position) {
         console.log('====================================');
@@ -2428,16 +2386,14 @@ class DxfPhotoEditor {
             await new Promise(resolve => setTimeout(resolve, 500)); // 0.5초 대기
             
             // 사진 객체 생성
-            // x, y: DXF 절대 좌표 (도면의 실제 좌표, mm 또는 도면 단위)
-            //       ViewBox는 DXF의 실제 좌표 범위이므로 position.x/y는 DXF 절대 좌표
-            //       확대/축소/이동해도 변하지 않는 고정 좌표
-            // width, height: 메타데이터 용도 (화면 표시는 1.5px 고정)
+            // x, y: ViewBox 좌표계에 고정 (롱프레스한 위치)
+            // width, height: 화면 표시용이 아닌 메타데이터 용도 (항상 고정값)
             const photo = {
                 id: Date.now(),
-                x: position.x,  // DXF 절대 좌표 X (고정)
-                y: position.y,  // DXF 절대 좌표 Y (고정)
-                width: 1,       // 더미값 (화면 표시는 픽셀 기준 1.5px 고정)
-                height: 1,      // 더미값 (화면 표시는 픽셀 기준 1.5px 고정)
+                x: position.x,  // ViewBox 좌표 (고정)
+                y: position.y,  // ViewBox 좌표 (고정)
+                width: 1,       // 더미값 (화면 표시는 픽셀 기준 25px 고정)
+                height: 1,      // 더미값 (화면 표시는 픽셀 기준 25px 고정)
                 imageData: compressedImageData, // 압축된 이미지 사용
                 image: image,
                 memo: '',
@@ -2445,10 +2401,14 @@ class DxfPhotoEditor {
                 uploaded: false // 업로드 상태 추적
             };
             
-            console.log('4️⃣ 사진 객체 생성 완료:');
-            console.log(`   ID: ${photo.id}`);
-            console.log(`   DXF 절대좌표: (${photo.x.toFixed(2)}, ${photo.y.toFixed(2)})`);
-            console.log(`   파일명: ${photo.fileName}`);
+            console.log('4️⃣ 사진 객체 생성 완료:', {
+                id: photo.id,
+                x: photo.x,
+                y: photo.y,
+                width: photo.width,
+                height: photo.height,
+                fileName: photo.fileName
+            });
             
             this.photos.push(photo);
             console.log(`5️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
@@ -2659,8 +2619,6 @@ class DxfPhotoEditor {
      * 터치 시작 이벤트 (핀치줌 지원 + 롱프레스 통합)
      */
     onTouchStart(e) {
-        console.log('👆 onTouchStart - 터치 개수:', e.touches.length);
-        
         // 기본 브라우저 동작 방지 (페이지 확대/축소 방지)
         e.preventDefault();
         
@@ -3343,38 +3301,13 @@ async function startApp() {
     
     if (window.driveManager) {
         console.log('✅ Google Drive Manager 준비됨');
-        
-        // 저장된 토큰이 있으면 자동으로 파일 목록 로드
-        if (window.driveManager.accessToken && window.driveManager.initialized) {
-            console.log('🔄 저장된 로그인 세션 발견 - 자동 로그인 중...');
-            
-            // 앱 인스턴스 먼저 생성
-            app = new DxfPhotoEditor();
-            console.log('✅ DXF Photo Editor 초기화 완료');
-            
-            // 파일 목록 자동 로드
-            try {
-                await app.loadFileList();
-                console.log('✅ 파일 목록 자동 로드 완료');
-            } catch (error) {
-                console.error('❌ 파일 목록 자동 로드 실패:', error);
-                // 토큰이 유효하지 않으면 삭제
-                window.driveManager.clearTokenFromStorage();
-                window.driveManager.accessToken = null;
-                window.driveManager.initialized = false;
-                console.log('⚠️ 토큰이 유효하지 않습니다. 다시 로그인해주세요.');
-            }
-        } else {
-            // 저장된 토큰이 없으면 일반 초기화
-            app = new DxfPhotoEditor();
-            console.log('✅ DXF Photo Editor 초기화 완료');
-        }
     } else {
         console.warn('⚠️ Google Drive Manager 초기화 대기 시간 초과');
-        // Google Drive 없이도 앱은 시작
-        app = new DxfPhotoEditor();
-        console.log('✅ DXF Photo Editor 초기화 완료 (오프라인 모드)');
     }
+    
+    // 앱 인스턴스 생성
+    app = new DxfPhotoEditor();
+    console.log('✅ DXF Photo Editor 초기화 완료');
 }
 
 document.addEventListener('DOMContentLoaded', startApp);
