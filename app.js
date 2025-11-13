@@ -1161,7 +1161,7 @@ class DxfPhotoEditor {
     }
     
     /**
-     * DXF 파일 목록 로드
+     * 파일 목록 로드 (모든 파일)
      */
     async loadFileList() {
         try {
@@ -1171,15 +1171,16 @@ class DxfPhotoEditor {
             console.log('driveManager 존재:', !!window.driveManager);
             console.log('accessToken 존재:', !!window.driveManager?.accessToken);
             
-            if (!window.listDxfFiles) {
+            if (!window.driveManager || !window.driveManager.listFiles) {
                 throw new Error('Google Drive가 초기화되지 않았습니다.\n\n페이지를 새로고침해주세요.');
             }
             
-            if (!window.driveManager || !window.driveManager.accessToken) {
+            if (!window.driveManager.accessToken) {
                 throw new Error('로그인이 필요합니다.\n\n먼저 로그인 버튼을 클릭해주세요.');
             }
             
-            const files = await window.listDxfFiles();
+            // 모든 파일 목록 가져오기 (DXF만이 아닌)
+            const files = await window.driveManager.listFiles();
             
             console.log('✅ 파일 목록 로드 성공:', files.length + '개');
             

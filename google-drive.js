@@ -103,12 +103,12 @@ class GoogleDriveManager {
     }
 
     /**
-     * 지정된 폴더에서 DXF 파일 목록 가져오기
+     * 지정된 폴더에서 모든 파일 목록 가져오기
      */
-    async listDxfFiles() {
+    async listFiles() {
         this.ensureAuthenticated();
 
-        console.log('📂 DXF 파일 목록 조회 중...');
+        console.log('📂 파일 목록 조회 중...');
         console.log('폴더 ID:', this.targetFolderId);
         console.log('액세스 토큰:', this.accessToken ? '있음 (길이: ' + this.accessToken.length + ')' : '없음');
 
@@ -133,10 +133,19 @@ class GoogleDriveManager {
 
         const data = await response.json();
         
-        console.log('전체 파일 수:', data.files.length);
+        console.log('✅ 전체 파일 수:', data.files.length);
+
+        return data.files;
+    }
+
+    /**
+     * 지정된 폴더에서 DXF 파일 목록만 가져오기
+     */
+    async listDxfFiles() {
+        const allFiles = await this.listFiles();
         
         // .dxf 파일만 필터링
-        const dxfFiles = data.files.filter(file => 
+        const dxfFiles = allFiles.filter(file => 
             file.name.toLowerCase().endsWith('.dxf')
         );
 
