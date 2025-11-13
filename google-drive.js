@@ -21,6 +21,8 @@ class GoogleDriveManager {
         
         // 액세스 토큰
         this.accessToken = null;
+        this.tokenExpiresAt = null;
+        this.tokenStorageKey = 'dmap:gdrive-token';
         
         // Token Client
         this.tokenClient = null;
@@ -56,6 +58,8 @@ class GoogleDriveManager {
                         },
                     });
                     
+                    this.restoreTokenFromStorage();
+                    
                     console.log('✅ Token Client 초기화 완료');
                     resolve();
                 }
@@ -82,7 +86,7 @@ class GoogleDriveManager {
                     return;
                 }
                 
-                this.accessToken = response.access_token;
+                this.persistToken(response.access_token, response.expires_in);
                 this.initialized = true;
                 console.log('✅ 인증 완료');
                 resolve(this.accessToken);
@@ -93,12 +97,60 @@ class GoogleDriveManager {
         });
     }
 
+    persistToken(accessToken, expiresIn = 3600) {
+        if (!accessToken) return;
+        const expiresAt = Date.now() + (expiresIn * 1000) - 60000; // 만료 1분 전 갱신
+        this.accessToken = accessToken;
+        this.tokenExpiresAt = expiresAt;
+        try {
+            localStorage.setItem(this.tokenStorageKey, JSON.stringify({
+                accessToken,
+                expiresAt
+            }));
+            console.log(`🔒 토큰 저장됨 (만료까지 ${Math.round((expiresAt - Date.now()) / 1000)}초)`);
+        } catch (error) {
+            console.warn('⚠️ 토큰 저장 실패:', error);
+        }
+    }
+
+    restoreTokenFromStorage() {
+        try {
+            const stored = localStorage.getItem(this.tokenStorageKey);
+            if (!stored) return;
+            const parsed = JSON.parse(stored);
+            if (parsed && parsed.accessToken && parsed.expiresAt && Date.now() < parsed.expiresAt) {
+                this.accessToken = parsed.accessToken;
+                this.tokenExpiresAt = parsed.expiresAt;
+                this.initialized = true;
+                console.log('🔑 저장된 토큰 복원, 만료까지', Math.round((parsed.expiresAt - Date.now()) / 1000), '초');
+                return;
+            }
+        } catch (error) {
+            console.warn('⚠️ 저장된 토큰 로드 실패:', error);
+        }
+        this.clearStoredToken();
+    }
+
+    clearStoredToken() {
+        this.accessToken = null;
+        this.tokenExpiresAt = null;
+        try {
+            localStorage.removeItem(this.tokenStorageKey);
+        } catch (error) {
+            console.warn('⚠️ 토큰 제거 실패:', error);
+        }
+    }
+
+    isAccessTokenValid() {
+        return !!this.accessToken && !!this.tokenExpiresAt && Date.now() < this.tokenExpiresAt;
+    }
+
     /**
      * 액세스 토큰 확인
      */
     ensureAuthenticated() {
-        if (!this.accessToken) {
-            throw new Error('인증이 필요합니다. 먼저 로그인하세요.');
+        if (!this.isAccessTokenValid()) {
+            throw new Error('Google Drive 로그인이 필요합니다. 페이지를 새로고침하고 다시 로그인해주세요.');
         }
     }
 
@@ -370,7 +422,7 @@ class GoogleDriveManager {
                 console.log('🔓 로그아웃 완료');
             });
         }
-        this.accessToken = null;
+        this.clearStoredToken();
         this.initialized = false;
     }
 }
@@ -384,8 +436,21 @@ window.initGoogleDrive = async function() {
         await window.driveManager.initialize();
         console.log('✅ Google Drive 준비 완료');
         
+        const isAuthError = (error) => {
+            if (!error) return false;
+            const status = error.status;
+            const message = (error.message || error.toString() || '').toLowerCase();
+            if (status === 401 || status === 403) return true;
+            return /401|403|login|로그인|token|토큰|인증|unauthorized|authorization/.test(message);
+        };
+        
         // 앱에서 사용할 수 있도록 전역 함수 등록
         window.authenticateGoogleDrive = async () => {
+            if (window.driveManager?.isAccessTokenValid()) {
+                console.log('🔁 저장된 액세스 토큰 유효함, 재인증 생략');
+                return true;
+            }
+
             try {
                 await window.driveManager.authenticate();
                 return true;
@@ -396,7 +461,7 @@ window.initGoogleDrive = async function() {
         };
         
         window.listDxfFiles = async () => {
-            return await window.driveManager.listDxfFiles();
+            return await window.driveManager.listFiles();
         };
         
         window.downloadDxfFile = async (fileId) => {
@@ -422,7 +487,8 @@ window.initGoogleDrive = async function() {
         };
         
         // Google Drive에서 사진 파일 삭제
-        window.deletePhotoFromDrive = async (photoFileName) => {
+        window.deletePhotoFromDrive = async (photoFileName, options = {}) => {
+            const { retrying = false } = options;
             try {
                 console.log('🗑️ Google Drive에서 사진 삭제:', photoFileName);
                 
@@ -430,7 +496,7 @@ window.initGoogleDrive = async function() {
                     throw new Error('Google Drive Manager가 초기화되지 않았습니다');
                 }
                 
-                if (!window.driveManager.accessToken) {
+                if (!window.driveManager.isAccessTokenValid()) {
                     throw new Error('Google Drive 로그인이 필요합니다');
                 }
                 
@@ -449,11 +515,19 @@ window.initGoogleDrive = async function() {
                 }
             } catch (error) {
                 console.error('❌ Google Drive 사진 삭제 실패:', error);
+                if (!retrying && isAuthError(error)) {
+                    console.log('   🔁 인증 오류 감지, 다시 로그인 시도...');
+                    const reauth = await window.authenticateGoogleDrive();
+                    if (reauth) {
+                        return window.deletePhotoFromDrive(photoFileName, { retrying: true });
+                    }
+                }
                 throw error;
             }
         };
         
-        window.saveToDrive = async (appData, dxfFileName) => {
+        window.saveToDrive = async (appData, dxfFileName, options = {}) => {
+            const { retrying = false } = options;
             try {
                 console.log('💾 Google Drive 저장 시작...');
                 console.log('   파일명:', dxfFileName);
@@ -465,7 +539,7 @@ window.initGoogleDrive = async function() {
                     throw new Error('Google Drive Manager가 초기화되지 않았습니다');
                 }
                 
-                if (!window.driveManager.accessToken) {
+                if (!window.driveManager.isAccessTokenValid()) {
                     throw new Error('Google Drive 로그인이 필요합니다');
                 }
                 
@@ -516,6 +590,13 @@ window.initGoogleDrive = async function() {
                 console.error('❌ Google Drive 저장 실패:', error);
                 console.error('   에러 상세:', error.message);
                 console.error('   스택:', error.stack);
+                if (!retrying && isAuthError(error)) {
+                    console.log('   🔁 인증 오류 감지, 다시 로그인 시도...');
+                    const reauth = await window.authenticateGoogleDrive();
+                    if (reauth) {
+                        return window.saveToDrive(appData, dxfFileName, { retrying: true });
+                    }
+                }
                 throw error; // 에러를 위로 전파하여 app.js에서 처리
             }
         };
@@ -524,6 +605,18 @@ window.initGoogleDrive = async function() {
         console.error('❌ Google Drive 초기화 실패:', error);
     }
 };
+
+(() => {
+    const originalInitGoogleDrive = window.initGoogleDrive;
+    window.driveInitPromise = null;
+
+    window.initGoogleDrive = async () => {
+        if (!window.driveInitPromise) {
+            window.driveInitPromise = originalInitGoogleDrive();
+        }
+        return window.driveInitPromise;
+    };
+})();
 
 /**
  * 토스트 메시지 표시 유틸리티

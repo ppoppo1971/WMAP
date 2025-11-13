@@ -1188,10 +1188,7 @@ class DxfPhotoEditor {
             
             // UI 업데이트
             this.renderFileList(files);
-            
-            // 로그인 버튼 텍스트 변경
-            document.getElementById('login-btn').textContent = '✅ 로그인됨';
-            document.getElementById('login-btn').style.background = '#34C759';
+            this.setLoginButtonState(true);
             
         } catch (error) {
             this.showLoading(false);
@@ -1200,12 +1197,17 @@ class DxfPhotoEditor {
             
             alert('파일 목록을 불러오는데 실패했습니다.\n\n' + error.message + '\n\n다시 로그인해주세요.');
             
-            // 다시 로그인 버튼 텍스트 원래대로
-            document.getElementById('login-btn').textContent = '🔐 Google Drive';
-            document.getElementById('login-btn').style.background = '#4285F4';
+            this.setLoginButtonState(false);
         }
     }
     
+    setLoginButtonState(isLoggedIn) {
+        const btn = document.getElementById('login-btn');
+        if (!btn) return;
+        btn.textContent = isLoggedIn ? '✅ 로그인됨' : '🔐 Google Drive';
+        btn.style.background = isLoggedIn ? '#34C759' : '#4285F4';
+    }
+
     /**
      * 파일 목록 UI 렌더링
      */
@@ -3288,6 +3290,27 @@ class DxfPhotoEditor {
 // 앱 시작
 let app;
 
+async function waitForDriveReady(timeoutMs = 5000) {
+    if (window.driveInitPromise) {
+        return window.driveInitPromise;
+    }
+
+    return new Promise(resolve => {
+        const interval = setInterval(() => {
+            if (window.driveInitPromise) {
+                clearInterval(interval);
+                window.driveInitPromise.then(resolve).catch(resolve);
+                return;
+            }
+        }, 100);
+
+        setTimeout(() => {
+            clearInterval(interval);
+            resolve();
+        }, timeoutMs);
+    });
+}
+
 // Google Drive 준비 대기 후 앱 시작
 async function startApp() {
     console.log('📱 앱 시작...');
@@ -3304,10 +3327,17 @@ async function startApp() {
     } else {
         console.warn('⚠️ Google Drive Manager 초기화 대기 시간 초과');
     }
+
+    await waitForDriveReady();
     
     // 앱 인스턴스 생성
     app = new DxfPhotoEditor();
     console.log('✅ DXF Photo Editor 초기화 완료');
+
+    if (window.driveManager?.isAccessTokenValid()) {
+        app.setLoginButtonState(true);
+        await app.loadFileList();
+    }
 }
 
 document.addEventListener('DOMContentLoaded', startApp);
