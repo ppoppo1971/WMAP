@@ -1206,7 +1206,11 @@ class DxfPhotoEditor {
         this.scale = 1;
         this.offsetX = 0;
         this.offsetY = 0;
-        this.colorDebugCount = 0; // 색상 디버그 카운터 리셋
+        
+        // 디버그 카운터 리셋
+        this.colorDebugCount = 0;
+        this._polylineDebugCount = 0;
+        this._blockDebugCount = 0;
         
         // DXF 렌더링
         this.fitDxfToView();
@@ -1518,20 +1522,25 @@ class DxfPhotoEditor {
         
         const points = validVertices.map(v => `${v.x},${-v.y}`).join(' ');
         
-        const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
-        polyline.setAttribute('points', points);
-        polyline.setAttribute('fill', 'none');
-        polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
-        // stroke-width는 CSS에서 강제 적용 (width 무시)
-        polyline.setAttribute('stroke-linejoin', 'round');
-        polyline.setAttribute('stroke-linecap', 'round');
+        // ⭐ closed 속성 확인: 닫힌 폴리선은 polygon 사용
+        const isClosed = entity.closed || entity.shape;
+        const element = document.createElementNS('http://www.w3.org/2000/svg', isClosed ? 'polygon' : 'polyline');
         
-        // 로그: width 속성 확인
-        if (entity.width || entity.startWidth || entity.endWidth) {
-            console.log(`📏 폴리선 굵기 속성: width=${entity.width}, start=${entity.startWidth}, end=${entity.endWidth} → CSS로 0.3 강제`);
+        element.setAttribute('points', points);
+        element.setAttribute('fill', 'none');
+        element.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
+        // stroke-width는 CSS에서 강제 적용 (width 무시)
+        element.setAttribute('stroke-linejoin', 'round');
+        element.setAttribute('stroke-linecap', 'round');
+        
+        // 디버그: closed 속성 확인 (처음 5개만)
+        if (!this._polylineDebugCount) this._polylineDebugCount = 0;
+        if (this._polylineDebugCount < 5 && isClosed) {
+            console.log(`📐 닫힌 폴리선 발견: closed=${entity.closed}, shape=${entity.shape} → polygon 사용`);
+            this._polylineDebugCount++;
         }
         
-        return polyline;
+        return element;
     }
     
     createSvgCircle(entity) {
@@ -1630,24 +1639,41 @@ class DxfPhotoEditor {
         // 블록 그룹 생성
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         
-        // 변환 적용
-        let transform = `translate(${entity.position.x}, ${-entity.position.y})`;
+        // ⭐ 변환 적용 (SVG transform 순서: 나중에 쓴 것이 먼저 적용됨)
+        const transforms = [];
         
-        if (entity.rotation) {
-            transform += ` rotate(${-entity.rotation})`;
+        // 1. 블록 기준점 이동 (block.position)
+        if (block.position) {
+            transforms.push(`translate(${-block.position.x}, ${block.position.y})`);
         }
         
+        // 2. Scale 적용 (Y축은 이미 반전되어 있으므로 -yScale 사용)
         const xScale = entity.xScale || 1;
         const yScale = entity.yScale || 1;
         if (xScale !== 1 || yScale !== 1) {
-            transform += ` scale(${xScale}, ${yScale})`;
+            transforms.push(`scale(${xScale}, ${-yScale})`); // ⭐ Y축 scale 부호 반전
         }
         
-        if (block.position) {
-            transform += ` translate(${-block.position.x}, ${block.position.y})`;
+        // 3. 회전 적용 (라디안 → 각도 변환)
+        if (entity.rotation) {
+            const rotationDeg = -(entity.rotation * 180 / Math.PI); // ⭐ 라디안을 각도로 변환
+            transforms.push(`rotate(${rotationDeg})`);
         }
         
-        group.setAttribute('transform', transform);
+        // 4. 삽입 위치 이동
+        transforms.push(`translate(${entity.position.x}, ${-entity.position.y})`);
+        
+        // transform 속성 설정 (역순으로 적용)
+        const transformStr = transforms.reverse().join(' ');
+        group.setAttribute('transform', transformStr);
+        
+        // 디버그: 블록 변환 정보 (처음 3개만)
+        if (!this._blockDebugCount) this._blockDebugCount = 0;
+        if (this._blockDebugCount < 3) {
+            console.log(`📦 블록 "${entity.name}": pos=(${entity.position.x.toFixed(1)}, ${entity.position.y.toFixed(1)}), rotation=${entity.rotation ? (entity.rotation * 180 / Math.PI).toFixed(1) : 0}°, scale=(${xScale}, ${yScale})`);
+            console.log(`   → transform="${transformStr}"`);
+            this._blockDebugCount++;
+        }
         
         // 블록 내부 엔티티 렌더링
         block.entities.forEach(blockEntity => {
