@@ -498,17 +498,32 @@ class DxfPhotoEditor {
         // 전체보기는 슬라이딩 메뉴에서 처리됨
         
         // 메모 모달
-        document.getElementById('close-memo').addEventListener('click', () => {
-            this.closeMemoModal();
-        });
+        const closeMemoBtn = document.getElementById('close-memo');
+        if (closeMemoBtn) {
+            closeMemoBtn.addEventListener('click', () => {
+                this.closeMemoModal();
+            });
+        } else {
+            console.warn('⚠️ close-memo 버튼을 찾을 수 없습니다');
+        }
         
-        document.getElementById('save-memo').addEventListener('click', () => {
-            this.saveMemo();
-        });
+        const saveMemoBtn = document.getElementById('save-memo');
+        if (saveMemoBtn) {
+            saveMemoBtn.addEventListener('click', () => {
+                this.saveMemo();
+            });
+        } else {
+            console.warn('⚠️ save-memo 버튼을 찾을 수 없습니다');
+        }
         
-        document.getElementById('delete-photo').addEventListener('click', () => {
-            this.deletePhoto();
-        });
+        const deletePhotoBtn = document.getElementById('delete-photo-btn');
+        if (deletePhotoBtn) {
+            deletePhotoBtn.addEventListener('click', () => {
+                this.deletePhoto();
+            });
+        } else {
+            console.warn('⚠️ delete-photo-btn 버튼을 찾을 수 없습니다');
+        }
         
         // 롱프레스 이벤트 (SVG에 추가)
         this.setupLongPressEvents();
@@ -635,19 +650,34 @@ class DxfPhotoEditor {
         this.svg.addEventListener('click', handleOutsideClick);
         
         // 사진 보기 모달 이벤트
-        document.getElementById('close-photo-view').addEventListener('click', () => {
-            this.closePhotoViewModal();
-        });
+        const closePhotoViewBtn = document.getElementById('close-photo-view');
+        if (closePhotoViewBtn) {
+            closePhotoViewBtn.addEventListener('click', () => {
+                this.closePhotoViewModal();
+            });
+        } else {
+            console.warn('⚠️ close-photo-view 버튼을 찾을 수 없습니다');
+        }
         
-        document.getElementById('edit-photo-memo-btn').addEventListener('click', () => {
-            this.closePhotoViewModal();
-            this.openMemoModal(this.selectedPhotoId);
-        });
+        const editPhotoMemoBtn = document.getElementById('edit-photo-memo-btn');
+        if (editPhotoMemoBtn) {
+            editPhotoMemoBtn.addEventListener('click', () => {
+                this.closePhotoViewModal();
+                this.openMemoModal(this.selectedPhotoId);
+            });
+        } else {
+            console.warn('⚠️ edit-photo-memo-btn 버튼을 찾을 수 없습니다');
+        }
         
-        document.getElementById('delete-photo-btn').addEventListener('click', () => {
-            this.closePhotoViewModal();
-            this.deletePhoto();
-        });
+        const deletePhotoViewBtn = document.getElementById('delete-photo-btn');
+        if (deletePhotoViewBtn) {
+            deletePhotoViewBtn.addEventListener('click', () => {
+                this.closePhotoViewModal();
+                this.deletePhoto();
+            });
+        } else {
+            console.warn('⚠️ delete-photo-btn 버튼을 찾을 수 없습니다 (사진 보기 모달)');
+        }
     }
     
     /**
@@ -879,7 +909,9 @@ class DxfPhotoEditor {
      */
     hideContextMenu() {
         const contextMenu = document.getElementById('context-menu');
-        contextMenu.classList.remove('active');
+        if (contextMenu) {
+            contextMenu.classList.remove('active');
+        }
     }
     
     /**
@@ -916,7 +948,9 @@ class DxfPhotoEditor {
      */
     hideTextInputModal() {
         const modal = document.getElementById('text-input-modal');
-        modal.classList.remove('active');
+        if (modal) {
+            modal.classList.remove('active');
+        }
     }
     
     /**
@@ -985,6 +1019,11 @@ class DxfPhotoEditor {
         const slideMenu = document.getElementById('slide-menu');
         const overlay = document.getElementById('menu-overlay');
         
+        if (!slideMenu || !overlay) {
+            console.warn('⚠️ 슬라이딩 메뉴 요소를 찾을 수 없습니다');
+            return;
+        }
+        
         const isActive = slideMenu.classList.contains('active');
         
         if (isActive) {
@@ -998,16 +1037,26 @@ class DxfPhotoEditor {
      * 슬라이딩 메뉴 열기
      */
     openSlideMenu() {
-        document.getElementById('slide-menu').classList.add('active');
-        document.getElementById('menu-overlay').classList.add('active');
+        const slideMenu = document.getElementById('slide-menu');
+        const overlay = document.getElementById('menu-overlay');
+        
+        if (slideMenu && overlay) {
+            slideMenu.classList.add('active');
+            overlay.classList.add('active');
+        }
     }
     
     /**
      * 슬라이딩 메뉴 닫기
      */
     closeSlideMenu() {
-        document.getElementById('slide-menu').classList.remove('active');
-        document.getElementById('menu-overlay').classList.remove('active');
+        const slideMenu = document.getElementById('slide-menu');
+        const overlay = document.getElementById('menu-overlay');
+        
+        if (slideMenu && overlay) {
+            slideMenu.classList.remove('active');
+            overlay.classList.remove('active');
+        }
     }
     
     /**
@@ -1222,7 +1271,10 @@ class DxfPhotoEditor {
     }
     
     showLoading(show) {
-        document.getElementById('loading').classList.toggle('active', show);
+        const loading = document.getElementById('loading');
+        if (loading) {
+            loading.classList.toggle('active', show);
+        }
     }
     
     /**
@@ -2702,7 +2754,10 @@ class DxfPhotoEditor {
      * 사진 보기 모달 닫기
      */
     closePhotoViewModal() {
-        document.getElementById('photo-view-modal').classList.remove('active');
+        const modal = document.getElementById('photo-view-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
     }
     
     /**
@@ -2729,7 +2784,10 @@ class DxfPhotoEditor {
     }
     
     closeMemoModal() {
-        document.getElementById('memo-modal').classList.remove('active');
+        const modal = document.getElementById('memo-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
         this.selectedPhotoId = null;
     }
     
