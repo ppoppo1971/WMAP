@@ -2283,44 +2283,46 @@ class DxfPhotoEditor {
     // 기존 Canvas 렌더링 함수들은 제거됨 (SVG로 대체)
     
     /**
-     * 사진을 이모지(📷)로 표시 (최적화: rect 캐싱)
+     * 사진을 작은 점(●)으로 표시
      * 수정: 
-     * - 파란색 원형 제거
-     * - 이모지 크기를 화면 픽셀 기준으로 완전 고정 (25px)
-     * - 확대/축소해도 이모지 크기는 항상 동일
-     * - ViewBox 좌표에 고정 (드래그해도 이동 안 됨)
+     * - 이모지 대신 작은 점(●) 사용
+     * - 크기 15px로 고정 (가시성 확보)
+     * - ViewBox 좌표에 완전 고정
      */
     drawPhotos() {
         const rect = this.getCachedRect();
         console.log('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
         
         this.photos.forEach((photo, index) => {
-            // ViewBox 좌표 → 스크린 좌표 변환 (사진의 위치)
-            // photo.x, photo.y는 ViewBox 좌표계에 고정되어 있음
+            // ViewBox 좌표 → 스크린 좌표 변환
+            // photo.x, photo.y는 ViewBox 좌표계에 고정
             const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
             const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
             
-            // 화면 밖에 있으면 그리지 않음 (성능 최적화)
+            // 화면 밖에 있으면 그리지 않음
             if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
                 return;
             }
             
-            // 이모지 크기를 화면 픽셀 기준으로 완전 고정 (25px)
-            // ViewBox의 확대/축소와 무관하게 항상 25px로 표시
-            const emojiSize = 25;
-            
             this.ctx.save();
             
-            // 카메라 이모지 표시 (화면 픽셀 기준 25px 고정)
-            this.ctx.font = `${emojiSize}px Arial`;
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.fillText('📷', screenX, screenY);
+            // 작은 원으로 표시 (15px 고정)
+            this.ctx.fillStyle = '#FF0000'; // 빨간색
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, 7.5, 0, Math.PI * 2); // 반지름 7.5px (직경 15px)
+            this.ctx.fill();
             
-            // 메모 아이콘 (메모가 있는 경우)
+            // 테두리 (흰색, 더 잘 보이게)
+            this.ctx.strokeStyle = '#FFFFFF';
+            this.ctx.lineWidth = 2;
+            this.ctx.stroke();
+            
+            // 메모가 있으면 작은 점 추가
             if (photo.memo && photo.memo.trim()) {
-                this.ctx.font = `${emojiSize * 0.5}px Arial`;
-                this.ctx.fillText('📝', screenX + emojiSize * 0.4, screenY - emojiSize * 0.4);
+                this.ctx.fillStyle = '#0000FF';
+                this.ctx.beginPath();
+                this.ctx.arc(screenX + 10, screenY - 10, 3, 0, Math.PI * 2);
+                this.ctx.fill();
             }
             
             this.ctx.restore();
@@ -2921,17 +2923,16 @@ class DxfPhotoEditor {
         
         console.log('👆 Canvas 클릭:', { clickX, clickY });
         
-        // 이모지 클릭 확인 (원형 영역)
+        // 사진 점 클릭 확인 (원형 영역)
         for (let i = this.photos.length - 1; i >= 0; i--) {
             const photo = this.photos[i];
             
-            // 이모지 위치 계산 (고정 크기 25px)
+            // 사진 점 위치 계산
             const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
             const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
             
-            // 이모지 크기 고정 (25px) + 클릭 영역은 조금 크게 (40px)
-            const emojiSize = 25;
-            const clickRadius = 40; // 터치하기 쉽게 클릭 영역을 크게
+            // 클릭 영역 (30px - 터치하기 쉽게)
+            const clickRadius = 30;
             
             // 거리 계산 (원형 클릭 영역)
             const distance = Math.sqrt(
@@ -3027,9 +3028,10 @@ class DxfPhotoEditor {
     async deletePhoto() {
         if (!confirm('이 사진을 삭제하시겠습니까?')) return;
         
-        const photoToDelete = this.photos.find(p => p.id === this.selectedPhotoId);
-        if (!photoToDelete) return;
+        const photoIndex = this.photos.findIndex(p => p.id === this.selectedPhotoId);
+        if (photoIndex === -1) return;
         
+        const photoToDelete = this.photos[photoIndex];
         console.log('🗑️ 사진 삭제 시작:', photoToDelete.id);
         
         try {
@@ -3037,7 +3039,8 @@ class DxfPhotoEditor {
             if (window.currentDriveFile && window.deletePhotoFromDrive) {
                 this.showToast('🗑️ 삭제 중...');
                 const dxfFileName = window.currentDriveFile.name;
-                const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photoToDelete.id}.jpg`;
+                // 순번 기반 파일명
+                const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photoIndex + 1}.jpg`;
                 
                 console.log('   Google Drive에서 삭제:', photoFileName);
                 await window.deletePhotoFromDrive(photoFileName);

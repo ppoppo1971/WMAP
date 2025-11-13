@@ -443,7 +443,7 @@ window.initGoogleDrive = async function() {
                     dxfFile: dxfFileName,
                     photos: allPhotos.map((photo, index) => ({
                         id: photo.id,
-                        fileName: `${dxfFileName.replace('.dxf', '')}_photo_${photo.id}.jpg`,
+                        fileName: `${dxfFileName.replace('.dxf', '')}_photo_${index + 1}.jpg`,
                         position: { x: photo.x, y: photo.y },
                         size: { width: photo.width, height: photo.height },
                         memo: photo.memo || '',
@@ -460,9 +460,13 @@ window.initGoogleDrive = async function() {
                 // 2. 새로운 사진 파일들만 업로드
                 if (appData.photos.length > 0) {
                     console.log(`📸 새 사진 업로드 시작 (${appData.photos.length}개)...`);
+                    const allPhotos = appData.allPhotos || appData.photos;
+                    
                     for (let i = 0; i < appData.photos.length; i++) {
                         const photo = appData.photos[i];
-                        const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photo.id}.jpg`;
+                        // allPhotos에서 이 사진의 인덱스를 찾아서 순번 결정
+                        const photoIndex = allPhotos.findIndex(p => p.id === photo.id);
+                        const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photoIndex + 1}.jpg`;
                         
                         console.log(`   [${i + 1}/${appData.photos.length}] ${photoFileName} 업로드 중...`);
                         await window.driveManager.uploadImage(photoFileName, photo.imageData);
