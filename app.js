@@ -311,9 +311,15 @@ class DxfPhotoEditor {
      * @param {number} zoomFactor - 확대 배율 (2.0 = 2배 확대)
      */
     zoomToPoint(targetX, targetY, zoomFactor) {
+        console.log(`🔍 zoomToPoint 시작:`);
+        console.log(`   타겟: (${targetX.toFixed(1)}, ${targetY.toFixed(1)})`);
+        console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(1)}, y=${this.viewBox.y.toFixed(1)}, w=${this.viewBox.width.toFixed(1)}, h=${this.viewBox.height.toFixed(1)}`);
+        
         // 새로운 ViewBox 크기
         const newWidth = this.viewBox.width / zoomFactor;
         const newHeight = this.viewBox.height / zoomFactor;
+        
+        console.log(`   새 크기: w=${newWidth.toFixed(1)}, h=${newHeight.toFixed(1)} (${zoomFactor}배)`);
         
         // 최소/최대 크기 제한
         const minSize = (this.originalViewBox?.width || 1000) * 0.01;
@@ -325,9 +331,15 @@ class DxfPhotoEditor {
         }
         
         // 타겟 포인트가 화면 중심에 오도록 ViewBox 조정
+        const newX = targetX - newWidth / 2;
+        const newY = targetY - newHeight / 2;
+        
+        console.log(`   새 ViewBox: x=${newX.toFixed(1)}, y=${newY.toFixed(1)}`);
+        console.log(`   → 화면 중심 = (${(newX + newWidth / 2).toFixed(1)}, ${(newY + newHeight / 2).toFixed(1)})`);
+        
         this.viewBox = {
-            x: targetX - newWidth / 2,
-            y: targetY - newHeight / 2,
+            x: newX,
+            y: newY,
             width: newWidth,
             height: newHeight
         };
@@ -335,7 +347,7 @@ class DxfPhotoEditor {
         // ViewBox 업데이트
         this.updateViewBox();
         
-        console.log(`✅ 줌: (${targetX.toFixed(0)}, ${targetY.toFixed(0)}) → ${zoomFactor}배`);
+        console.log(`✅ 줌 완료!`);
     }
     
     init() {
@@ -2019,11 +2031,16 @@ class DxfPhotoEditor {
                 // 픽셀을 ViewBox 좌표로 변환
                 const rect = this.getCachedRect();
                 
-                // 손가락 방향 = 도면 이동 방향
+                // 손가락 방향 = 도면 이동 방향 (ViewBox는 반대 방향으로 이동)
                 // 손가락을 오른쪽으로 → 도면도 오른쪽으로 → viewBox.x 감소
-                // 손가락을 아래로 → 도면도 아래로 → viewBox.y 증가 (SVG Y축은 아래가 증가)
+                // 손가락을 아래로 → 도면도 아래로 → viewBox.y 감소 (DXF Y축 반전 때문)
                 const viewDeltaX = -(deltaX / rect.width) * this.viewBox.width;
-                const viewDeltaY = (deltaY / rect.height) * this.viewBox.height;  // Y는 양수
+                const viewDeltaY = -(deltaY / rect.height) * this.viewBox.height;  // Y도 음수
+                
+                // 디버깅 (큰 움직임만 로그)
+                if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
+                    console.log(`👆 드래그: 손가락(${deltaX.toFixed(0)}, ${deltaY.toFixed(0)}) → ViewDelta(${viewDeltaX.toFixed(1)}, ${viewDeltaY.toFixed(1)})`);
+                }
                 
                 // ViewBox 이동
                 this.viewBox.x += viewDeltaX;
