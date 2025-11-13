@@ -2818,10 +2818,17 @@ class DxfPhotoEditor {
                 }
             }
             
-            // 더블탭 감지
+            // 사진 클릭 또는 더블탭 감지
             if (!this.touchState.isDragging && !this.isLongPress && e.changedTouches.length > 0) {
                 const touch = e.changedTouches[0];
-                this.handleDoubleTap(touch.clientX, touch.clientY);
+                
+                // 먼저 사진 클릭 확인
+                const photoClicked = this.checkPhotoClick(touch.clientX, touch.clientY);
+                
+                // 사진이 클릭되지 않았을 때만 더블탭 처리
+                if (!photoClicked) {
+                    this.handleDoubleTap(touch.clientX, touch.clientY);
+                }
             }
             
             // 롱프레스 확인
@@ -2934,21 +2941,16 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 캔버스 클릭 이벤트 (이모지 클릭 감지)
-     * SVG 클릭 이벤트에서 호출됨
+     * 사진 클릭 확인 (공통 함수)
+     * @returns {boolean} 사진이 클릭되었으면 true, 아니면 false
      */
-    onCanvasClick(e) {
-        // 드래그 중이거나 방금 드래그가 끝났으면 클릭으로 처리하지 않음
-        if (this.touchState.isDragging || this.touchState.wasDragging) {
-            return;
-        }
-        
+    checkPhotoClick(clientX, clientY) {
         // 최적화: rect 한 번만 가져오기
         const rect = this.getCachedRect();
-        const clickX = e.clientX - rect.left;
-        const clickY = e.clientY - rect.top;
+        const clickX = clientX - rect.left;
+        const clickY = clientY - rect.top;
         
-        console.log('👆 Canvas 클릭:', { clickX, clickY });
+        console.log('👆 사진 클릭 확인:', { clickX, clickY });
         
         // 사진 점 클릭 확인 (원형 영역)
         for (let i = this.photos.length - 1; i >= 0; i--) {
@@ -2972,11 +2974,26 @@ class DxfPhotoEditor {
             if (distance <= clickRadius) {
                 console.log(`✅ 사진 ${photo.id} 클릭됨!`);
                 this.openPhotoActionModal(photo.id);
-                return;
+                return true;
             }
         }
         
         console.log('   → 사진이 클릭되지 않음');
+        return false;
+    }
+
+    /**
+     * 캔버스 클릭 이벤트 (이모지 클릭 감지)
+     * SVG 클릭 이벤트에서 호출됨
+     */
+    onCanvasClick(e) {
+        // 드래그 중이거나 방금 드래그가 끝났으면 클릭으로 처리하지 않음
+        if (this.touchState.isDragging || this.touchState.wasDragging) {
+            return;
+        }
+        
+        // 사진 클릭 확인
+        this.checkPhotoClick(e.clientX, e.clientY);
     }
     
     /**
