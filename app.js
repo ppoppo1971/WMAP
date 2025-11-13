@@ -55,7 +55,7 @@ class DxfPhotoEditor {
         
         // 롱프레스 관련
         this.longPressTimer = null;
-        this.longPressDuration = 500; // 0.5초
+        this.longPressDuration = 350; // 0.35초 (약간 빠르게)
         this.longPressPosition = { x: 0, y: 0 };
         this.isLongPress = false;
         

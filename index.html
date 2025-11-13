@@ -60,6 +60,10 @@
             white-space: nowrap;
             transition: transform 0.1s ease-out, background 0.1s ease-out;
             touch-action: manipulation; /* 빠른 탭 반응 */
+            /* 컨텍스트 메뉴 방지 */
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
 
         .btn:active {
@@ -311,6 +315,10 @@
             transition: background 0.15s ease-out !important;
             z-index: 9998 !important;
             pointer-events: auto !important;
+            /* 컨텍스트 메뉴 방지 */
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            -webkit-touch-callout: none !important;
         }
 
         .hamburger-btn:active {
@@ -351,6 +359,10 @@
             transition: background 0.15s ease-out !important;
             border-bottom: 1px solid #e0e0e0 !important;
             touch-action: manipulation !important;
+            /* 컨텍스트 메뉴 방지 */
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            -webkit-touch-callout: none !important;
         }
 
         .slide-menu-item:active {
@@ -407,6 +419,10 @@
             align-items: center !important;
             justify-content: center !important;
             transition: background 0.15s ease-out !important;
+            /* 컨텍스트 메뉴 방지 */
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            -webkit-touch-callout: none !important;
         }
 
         .zoom-btn:active {
@@ -486,6 +502,10 @@
             text-align: left;
             cursor: pointer;
             transition: background 0.2s;
+            /* 컨텍스트 메뉴 방지 */
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
 
         .context-menu-item:active {
@@ -931,6 +951,12 @@
         
         // 로드 시작
         loadAllLibraries();
+        
+        // 웹앱에서 컨텍스트 메뉴 방지 (롱프레스 시 복사 메뉴 등)
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            return false;
+        }, { passive: false });
     </script>
     
     <!-- Google Drive 모듈 (먼저 로드) -->
