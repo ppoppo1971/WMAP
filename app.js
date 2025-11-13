@@ -1211,6 +1211,7 @@ class DxfPhotoEditor {
         this.colorDebugCount = 0;
         this._polylineDebugCount = 0;
         this._blockDebugCount = 0;
+        this._textDebugCount = 0;
         
         // DXF 렌더링
         this.fitDxfToView();
@@ -1520,10 +1521,22 @@ class DxfPhotoEditor {
         
         if (validVertices.length < 2) return null;
         
-        const points = validVertices.map(v => `${v.x},${-v.y}`).join(' ');
-        
-        // ⭐ closed 속성 확인: 닫힌 폴리선은 polygon 사용
+        // ⭐ closed 속성 확인
         const isClosed = entity.closed || entity.shape;
+        
+        // ⭐ 중복 정점 제거: 마지막 점이 첫 점과 같으면 제거 (polygon은 자동으로 닫힘)
+        let finalVertices = [...validVertices];
+        if (isClosed && validVertices.length > 2) {
+            const first = validVertices[0];
+            const last = validVertices[validVertices.length - 1];
+            const threshold = 0.0001; // 매우 작은 값
+            if (Math.abs(first.x - last.x) < threshold && Math.abs(first.y - last.y) < threshold) {
+                finalVertices = validVertices.slice(0, -1); // 마지막 점 제거
+            }
+        }
+        
+        const points = finalVertices.map(v => `${v.x},${-v.y}`).join(' ');
+        
         const element = document.createElementNS('http://www.w3.org/2000/svg', isClosed ? 'polygon' : 'polyline');
         
         element.setAttribute('points', points);
@@ -1536,7 +1549,10 @@ class DxfPhotoEditor {
         // 디버그: closed 속성 확인 (처음 5개만)
         if (!this._polylineDebugCount) this._polylineDebugCount = 0;
         if (this._polylineDebugCount < 5 && isClosed) {
-            console.log(`📐 닫힌 폴리선 발견: closed=${entity.closed}, shape=${entity.shape} → polygon 사용`);
+            console.log(`📐 닫힌 폴리선: closed=${entity.closed}, shape=${entity.shape}, 정점=${validVertices.length}개 → ${finalVertices.length}개 (${validVertices.length !== finalVertices.length ? '중복 제거' : '그대로'})`);
+            const first = finalVertices[0];
+            const last = finalVertices[finalVertices.length - 1];
+            console.log(`   첫 점: (${first.x.toFixed(2)}, ${first.y.toFixed(2)}), 마지막 점: (${last.x.toFixed(2)}, ${last.y.toFixed(2)})`);
             this._polylineDebugCount++;
         }
         
@@ -1607,6 +1623,28 @@ class DxfPhotoEditor {
         text.setAttribute('font-size', fontSize);
         text.textContent = entity.text;
         
+        // ⭐ 수평 정렬 처리 (halign: 0=왼쪽, 1=중앙, 2=오른쪽, 3=정렬, 4=중간, 5=맞춤)
+        const halign = entity.halign || 0;
+        if (halign === 1 || halign === 4) {
+            text.setAttribute('text-anchor', 'middle');
+        } else if (halign === 2) {
+            text.setAttribute('text-anchor', 'end');
+        } else {
+            text.setAttribute('text-anchor', 'start');
+        }
+        
+        // ⭐ 수직 정렬 처리 (valign: 0=기준선, 1=아래, 2=중앙, 3=위)
+        const valign = entity.valign || 0;
+        if (valign === 1) {
+            text.setAttribute('dominant-baseline', 'text-after-edge');
+        } else if (valign === 2) {
+            text.setAttribute('dominant-baseline', 'middle');
+        } else if (valign === 3) {
+            text.setAttribute('dominant-baseline', 'text-before-edge');
+        } else {
+            text.setAttribute('dominant-baseline', 'alphabetic');
+        }
+        
         // SVG는 Y축이 아래로 증가하므로 텍스트 변환 처리
         if (entity.rotation) {
             // 회전이 있는 경우
@@ -1621,8 +1659,13 @@ class DxfPhotoEditor {
             text.setAttribute('y', -pos.y);
         }
         
-        // 텍스트 정렬
-        text.setAttribute('dominant-baseline', 'text-before-edge'); // 상단 정렬
+        // 디버그: 텍스트 정보 (처음 3개만)
+        if (!this._textDebugCount) this._textDebugCount = 0;
+        if (this._textDebugCount < 3) {
+            console.log(`📝 텍스트 "${entity.text}": pos=(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}), rotation=${entity.rotation ? (entity.rotation * 180 / Math.PI).toFixed(1) : 0}°`);
+            console.log(`   halign=${halign}, valign=${valign}, fontSize=${fontSize}`);
+            this._textDebugCount++;
+        }
         
         return text;
     }
@@ -1639,32 +1682,32 @@ class DxfPhotoEditor {
         // 블록 그룹 생성
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         
-        // ⭐ 변환 적용 (SVG transform 순서: 나중에 쓴 것이 먼저 적용됨)
+        // ⭐ 변환 적용 (SVG transform 순서 주의)
         const transforms = [];
         
-        // 1. 블록 기준점 이동 (block.position)
+        // 1. 삽입 위치로 이동
+        transforms.push(`translate(${entity.position.x}, ${-entity.position.y})`);
+        
+        // 2. 회전 적용 (라디안 → 각도 변환)
+        if (entity.rotation) {
+            const rotationDeg = -(entity.rotation * 180 / Math.PI);
+            transforms.push(`rotate(${rotationDeg})`);
+        }
+        
+        // 3. Scale 적용 (X만 적용, Y는 반전하지 않음)
+        const xScale = entity.xScale || 1;
+        const yScale = entity.yScale || 1;
+        if (xScale !== 1 || yScale !== 1) {
+            transforms.push(`scale(${xScale}, ${yScale})`); // ⭐ Y축 그대로 사용
+        }
+        
+        // 4. 블록 기준점 보정
         if (block.position) {
             transforms.push(`translate(${-block.position.x}, ${block.position.y})`);
         }
         
-        // 2. Scale 적용 (Y축은 이미 반전되어 있으므로 -yScale 사용)
-        const xScale = entity.xScale || 1;
-        const yScale = entity.yScale || 1;
-        if (xScale !== 1 || yScale !== 1) {
-            transforms.push(`scale(${xScale}, ${-yScale})`); // ⭐ Y축 scale 부호 반전
-        }
-        
-        // 3. 회전 적용 (라디안 → 각도 변환)
-        if (entity.rotation) {
-            const rotationDeg = -(entity.rotation * 180 / Math.PI); // ⭐ 라디안을 각도로 변환
-            transforms.push(`rotate(${rotationDeg})`);
-        }
-        
-        // 4. 삽입 위치 이동
-        transforms.push(`translate(${entity.position.x}, ${-entity.position.y})`);
-        
-        // transform 속성 설정 (역순으로 적용)
-        const transformStr = transforms.reverse().join(' ');
+        // transform 속성 설정
+        const transformStr = transforms.join(' ');
         group.setAttribute('transform', transformStr);
         
         // 디버그: 블록 변환 정보 (처음 3개만)
@@ -1672,6 +1715,10 @@ class DxfPhotoEditor {
         if (this._blockDebugCount < 3) {
             console.log(`📦 블록 "${entity.name}": pos=(${entity.position.x.toFixed(1)}, ${entity.position.y.toFixed(1)}), rotation=${entity.rotation ? (entity.rotation * 180 / Math.PI).toFixed(1) : 0}°, scale=(${xScale}, ${yScale})`);
             console.log(`   → transform="${transformStr}"`);
+            
+            // 블록 내부 엔티티 타입 확인
+            const entityTypes = block.entities.map(e => e.type).join(', ');
+            console.log(`   → 내부 엔티티: ${entityTypes}`);
             this._blockDebugCount++;
         }
         
