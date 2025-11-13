@@ -48,15 +48,7 @@ class DxfPhotoEditor {
             lastTouch: null,  // { x, y } 객체로 관리
             anchorView: null, // 드래그 시작 시 고정할 도면 좌표
             startViewBox: null,
-            lastPinchDistance: 0,
-            // CSS Transform 관련 (성능 최적화)
-            transformActive: false,    // CSS transform 사용 중인지
-            transformX: 0,             // 임시 이동량 (픽셀)
-            transformY: 0,
-            transformScale: 1,         // 임시 스케일
-            accumulatedDeltaX: 0,      // 누적 이동량
-            accumulatedDeltaY: 0,
-            initialPinchCenter: null   // 핀치 시작 중심점
+            lastPinchDistance: 0
         };
         
         this.selectedPhotoId = null;
@@ -66,6 +58,12 @@ class DxfPhotoEditor {
         this.longPressDuration = 500; // 0.5초
         this.longPressPosition = { x: 0, y: 0 };
         this.isLongPress = false;
+        
+        // 더블탭 관련
+        this.lastTapTime = 0;
+        this.lastTapPosition = { x: 0, y: 0 };
+        this.doubleTapDelay = 300; // 300ms 이내 두 번 탭
+        this.doubleTapDistance = 50; // 50px 이내 같은 위치
         
         // 텍스트 관련
         this.texts = []; // { id, x, y, text, fontSize }
@@ -265,101 +263,74 @@ class DxfPhotoEditor {
     }
     
     /**
-     * CSS Transform 적용 (GPU 가속, 매우 빠름)
-     * 터치 중에만 사용, 터치 종료 시 실제 ViewBox 업데이트
+     * 더블탭 감지 및 줌 처리
      */
-    applyTransform() {
-        if (!this.touchState.transformActive) return;
+    handleDoubleTap(clientX, clientY) {
+        const now = Date.now();
+        const timeDiff = now - this.lastTapTime;
         
-        const { transformX, transformY, transformScale } = this.touchState;
+        // 거리 계산
+        const distance = Math.sqrt(
+            Math.pow(clientX - this.lastTapPosition.x, 2) + 
+            Math.pow(clientY - this.lastTapPosition.y, 2)
+        );
         
-        // SVG와 Canvas에 동일한 transform 적용
-        const transform = `translate(${transformX}px, ${transformY}px) scale(${transformScale})`;
-        this.svg.style.transform = transform;
-        this.canvas.style.transform = transform;
-        
-        // transform-origin을 좌측 상단으로 고정
-        this.svg.style.transformOrigin = '0 0';
-        this.canvas.style.transformOrigin = '0 0';
+        // 더블탭 감지 (300ms 이내, 50px 이내)
+        if (timeDiff < this.doubleTapDelay && distance < this.doubleTapDistance) {
+            // 더블탭 확인!
+            console.log('🎯 더블탭 감지!');
+            
+            // 탭한 위치를 ViewBox 좌표로 변환
+            const rect = this.getCachedRect();
+            const tapX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
+            const tapY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+            
+            // 해당 위치로 줌인 (2배 확대)
+            this.zoomToPoint(tapX, tapY, 2.0);
+            
+            // 더블탭 정보 초기화 (연속 더블탭 방지)
+            this.lastTapTime = 0;
+            this.lastTapPosition = { x: 0, y: 0 };
+            
+        } else {
+            // 첫 번째 탭 기록
+            this.lastTapTime = now;
+            this.lastTapPosition = { x: clientX, y: clientY };
+        }
     }
     
     /**
-     * CSS Transform 제거 및 실제 ViewBox 업데이트
+     * 특정 점으로 줌 (애니메이션)
+     * @param {number} targetX - ViewBox 좌표 X
+     * @param {number} targetY - ViewBox 좌표 Y
+     * @param {number} zoomFactor - 확대 배율 (2.0 = 2배 확대)
      */
-    commitTransform() {
-        if (!this.touchState.transformActive) return;
+    zoomToPoint(targetX, targetY, zoomFactor) {
+        // 새로운 ViewBox 크기
+        const newWidth = this.viewBox.width / zoomFactor;
+        const newHeight = this.viewBox.height / zoomFactor;
         
-        // CSS transform 제거
-        this.svg.style.transform = '';
-        this.canvas.style.transform = '';
+        // 최소/최대 크기 제한
+        const minSize = (this.originalViewBox?.width || 1000) * 0.01;
+        const maxSize = (this.originalViewBox?.width || 1000) * 10;
         
-        // transform 상태 초기화
-        this.touchState.transformActive = false;
-        this.touchState.transformX = 0;
-        this.touchState.transformY = 0;
-        this.touchState.transformScale = 1;
-        this.touchState.accumulatedDeltaX = 0;
-        this.touchState.accumulatedDeltaY = 0;
-        this.touchState.initialPinchCenter = null;
+        if (newWidth < minSize || newWidth > maxSize) {
+            console.log('⚠️ 줌 제한 초과');
+            return;
+        }
         
-        // 실제 ViewBox 업데이트 (한 번만)
-        this.updateViewBox();
-    }
-    
-    /**
-     * CSS Transform을 실제 ViewBox 좌표로 변환
-     * 터치 종료 시 호출됨
-     */
-    commitTransformToViewBox() {
-        if (!this.touchState.transformActive) return;
-        
-        const { transformX, transformY, transformScale } = this.touchState;
-        
-        // 화면 크기
-        const rect = this.getCachedRect();
-        
-        // 1. 이동량을 ViewBox 좌표로 변환
-        const viewDeltaX = -(transformX / rect.width) * this.viewBox.width;
-        const viewDeltaY = -(transformY / rect.height) * this.viewBox.height;
-        
-        // 2. 스케일 변환 (ViewBox 크기 변경)
-        const newWidth = this.viewBox.width / transformScale;
-        const newHeight = this.viewBox.height / transformScale;
-        
-        // 3. 스케일 중심점 보정
-        // 스케일 시 중심점이 유지되도록 ViewBox 원점 조정
-        const centerRatioX = 0.5; // 화면 중심
-        const centerRatioY = 0.5;
-        
-        const oldCenterX = this.viewBox.x + this.viewBox.width * centerRatioX;
-        const oldCenterY = this.viewBox.y + this.viewBox.height * centerRatioY;
-        
-        // 4. 최종 ViewBox 계산
+        // 타겟 포인트가 화면 중심에 오도록 ViewBox 조정
         this.viewBox = {
-            x: oldCenterX - newWidth * centerRatioX + viewDeltaX,
-            y: oldCenterY - newHeight * centerRatioY + viewDeltaY,
+            x: targetX - newWidth / 2,
+            y: targetY - newHeight / 2,
             width: newWidth,
             height: newHeight
         };
         
-        // 5. CSS transform 제거
-        this.svg.style.transform = '';
-        this.canvas.style.transform = '';
-        
-        // 6. transform 상태 초기화
-        this.touchState.transformActive = false;
-        this.touchState.transformX = 0;
-        this.touchState.transformY = 0;
-        this.touchState.transformScale = 1;
-        this.touchState.accumulatedDeltaX = 0;
-        this.touchState.accumulatedDeltaY = 0;
-        this.touchState.initialPinchCenter = null;
-        
-        // 7. 실제 ViewBox 업데이트 (한 번만)
+        // ViewBox 업데이트
         this.updateViewBox();
         
-        // 8. rect 캐시 무효화 (ViewBox 변경됨)
-        this.cachedRect = null;
+        console.log(`✅ 줌: (${targetX.toFixed(0)}, ${targetY.toFixed(0)}) → ${zoomFactor}배`);
     }
     
     init() {
@@ -2011,11 +1982,10 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 터치 이동 이벤트 (CSS Transform 기반 - 초고속 성능)
-     * ViewBox 변경 대신 CSS transform 사용 → GPU 가속, 60fps 달성
+     * 터치 이동 이벤트 (단순화된 ViewBox 방식 - 안정적)
      */
     onTouchMove(e) {
-        // 항상 기본 동작 방지 (부드러운 동작)
+        // 항상 기본 동작 방지
         e.preventDefault();
         
         const touches = e.touches;
@@ -2033,32 +2003,32 @@ class DxfPhotoEditor {
             if (moveDistance > 5 && this.longPressTimer) {
                 this.cancelLongPress();
                 this.touchState.isDragging = true;
-                this.touchState.transformActive = true;  // CSS transform 활성화
             }
             
-            // 단일 터치: 팬(드래그) - CSS Transform 사용
+            // 단일 터치: 팬(드래그)
             if (this.touchState.isDragging && this.touchState.lastTouch) {
-                // 픽셀 단위 이동량 계산
+                // 픽셀 이동량
                 const deltaX = touch.clientX - this.touchState.lastTouch.x;
                 const deltaY = touch.clientY - this.touchState.lastTouch.y;
                 
-                // 누적 이동량 업데이트
-                this.touchState.accumulatedDeltaX += deltaX;
-                this.touchState.accumulatedDeltaY += deltaY;
+                // 픽셀을 ViewBox 좌표로 변환
+                const rect = this.getCachedRect();
+                const viewDeltaX = -(deltaX / rect.width) * this.viewBox.width;
+                const viewDeltaY = -(deltaY / rect.height) * this.viewBox.height;
                 
-                // CSS transform 업데이트 (픽셀 단위, 매우 빠름)
-                this.touchState.transformX = this.touchState.accumulatedDeltaX;
-                this.touchState.transformY = this.touchState.accumulatedDeltaY;
+                // ViewBox 이동
+                this.viewBox.x += viewDeltaX;
+                this.viewBox.y += viewDeltaY;
                 
-                // CSS transform 적용 (GPU 가속)
-                this.applyTransform();
+                // 즉시 업데이트 (requestAnimationFrame으로 throttle)
+                this.updateViewBox();
             }
             
             // 현재 위치 저장
             this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
             
         } else if (touches.length === 2 && this.touchState.isPinching) {
-            // 두 손가락: 핀치줌 (CSS Transform 사용)
+            // 두 손가락: 핀치줌
             const touch1 = touches[0];
             const touch2 = touches[1];
             
@@ -2070,28 +2040,37 @@ class DxfPhotoEditor {
             const centerScreenY = (touch1.clientY + touch2.clientY) / 2;
             
             if (this.touchState.lastPinchDistance > 0) {
-                // 스케일 팩터 계산
+                // 스케일 팩터
                 const scaleFactor = currentDistance / this.touchState.lastPinchDistance;
                 
-                // 첫 핀치 시 중심점 저장
-                if (!this.touchState.initialPinchCenter) {
-                    this.touchState.initialPinchCenter = {
-                        x: centerScreenX,
-                        y: centerScreenY
+                // 중심점을 ViewBox 좌표로 변환
+                const rect = this.getCachedRect();
+                const centerX = ((centerScreenX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
+                const centerY = ((centerScreenY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+                
+                // 새로운 ViewBox 크기
+                const newWidth = this.viewBox.width / scaleFactor;
+                const newHeight = this.viewBox.height / scaleFactor;
+                
+                // 최소/최대 크기 제한
+                const minSize = (this.originalViewBox?.width || 1000) * 0.01;
+                const maxSize = (this.originalViewBox?.width || 1000) * 10;
+                
+                if (newWidth >= minSize && newWidth <= maxSize) {
+                    // 중심점 기준으로 ViewBox 재계산
+                    const centerRatioX = (centerX - this.viewBox.x) / this.viewBox.width;
+                    const centerRatioY = (centerY - this.viewBox.y) / this.viewBox.height;
+                    
+                    this.viewBox = {
+                        x: centerX - newWidth * centerRatioX,
+                        y: centerY - newHeight * centerRatioY,
+                        width: newWidth,
+                        height: newHeight
                     };
-                    this.touchState.transformActive = true;
+                    
+                    // 즉시 업데이트
+                    this.updateViewBox();
                 }
-                
-                // 누적 스케일 업데이트
-                this.touchState.transformScale *= scaleFactor;
-                
-                // 스케일 중심점 보정 (중심점이 움직이지 않도록)
-                const center = this.touchState.initialPinchCenter;
-                this.touchState.transformX = centerScreenX - (centerScreenX - this.touchState.transformX) * scaleFactor;
-                this.touchState.transformY = centerScreenY - (centerScreenY - this.touchState.transformY) * scaleFactor;
-                
-                // CSS transform 적용 (GPU 가속)
-                this.applyTransform();
             }
             
             // 거리 업데이트
@@ -2100,7 +2079,7 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 터치 종료 이벤트 (롱프레스 처리 포함)
+     * 터치 종료 이벤트 (롱프레스 + 더블탭 처리)
      */
     onTouchEnd(e) {
         e.preventDefault();
@@ -2109,11 +2088,6 @@ class DxfPhotoEditor {
         
         if (touches.length === 0) {
             // 모든 터치 종료
-            
-            // ⭐ CSS Transform → ViewBox 업데이트 (핵심!)
-            if (this.touchState.transformActive) {
-                this.commitTransformToViewBox();
-            }
             
             // 컨텍스트 메뉴가 열려있고, 드래그하지 않았고, 롱프레스가 아니면 메뉴 닫기
             const contextMenu = document.getElementById('context-menu');
@@ -2127,6 +2101,12 @@ class DxfPhotoEditor {
                 if (!contextMenu.contains(target)) {
                     this.hideContextMenu();
                 }
+            }
+            
+            // 더블탭 감지
+            if (!this.touchState.isDragging && !this.isLongPress && e.changedTouches.length > 0) {
+                const touch = e.changedTouches[0];
+                this.handleDoubleTap(touch.clientX, touch.clientY);
             }
             
             // 롱프레스 확인
@@ -2144,6 +2124,9 @@ class DxfPhotoEditor {
                 }, 100);
             }
             
+            // rect 캐시 무효화 (ViewBox가 변경되었을 수 있음)
+            this.cachedRect = null;
+            
             // 상태 리셋
             this.touchState.isDragging = false;
             this.touchState.isPinching = false;
@@ -2153,24 +2136,16 @@ class DxfPhotoEditor {
             
         } else if (touches.length === 1) {
             // 두 손가락에서 한 손가락으로 전환
-            
-            // ⭐ 핀치줌 종료 시 ViewBox 업데이트
-            if (this.touchState.transformActive && this.touchState.isPinching) {
-                this.commitTransformToViewBox();
-            }
-            
             this.cancelLongPress();
             
             const touch = touches[0];
             
             // 드래그 재시작 준비
-            this.touchState.isDragging = true;
+            this.touchState.isDragging = false; // 드래그 재시작 방지 (핀치→팬 전환 시 끊김 방지)
             this.touchState.isPinching = false;
             this.touchState.startX = touch.clientX;
             this.touchState.startY = touch.clientY;
             this.touchState.lastTouch = { x: touch.clientX, y: touch.clientY };
-            this.touchState.anchorView = this.screenToViewBox(touch.clientX, touch.clientY);
-            this.touchState.startViewBox = {...this.viewBox};
         }
     }
     
