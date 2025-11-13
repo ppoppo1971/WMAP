@@ -205,6 +205,11 @@
             display: flex;
         }
 
+    /* 사진 액션 모달을 뷰어 UI보다 위로 띄우기 */
+    .photo-action-modal {
+        z-index: 10002;
+    }
+
         .modal-content {
             background: white;
             border-radius: 12px;
@@ -846,7 +851,7 @@
     </div>
 
     <!-- 사진 선택 모달 -->
-    <div class="modal" id="photo-action-modal">
+    <div class="modal photo-action-modal" id="photo-action-modal">
         <div class="modal-content">
             <div class="modal-header">
                 <h2>📷 사진</h2>
