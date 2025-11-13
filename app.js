@@ -513,67 +513,8 @@ class DxfPhotoEditor {
         // 롱프레스 이벤트 (SVG에 추가)
         this.setupLongPressEvents();
         
-        // 컨텍스트 메뉴 버튼들 (모바일 터치 지원)
-        const cameraBtn = document.getElementById('camera-btn');
-        const galleryBtn = document.getElementById('gallery-btn');
-        const textBtn = document.getElementById('text-btn');
-        
-        // 카메라 버튼
-        const handleCameraClick = (e) => {
-            console.log('📷 카메라 버튼 클릭!');
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation(); // 다른 핸들러 차단
-            this.hideContextMenu();
-            
-            // 짧은 지연 후 카메라 입력 트리거
-            setTimeout(() => {
-                document.getElementById('camera-input').click();
-            }, 100);
-        };
-        cameraBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // 기본 터치 동작 방지
-        });
-        cameraBtn.addEventListener('touchend', handleCameraClick);
-        cameraBtn.addEventListener('click', handleCameraClick);
-        
-        // 갤러리 버튼
-        const handleGalleryClick = (e) => {
-            console.log('🖼️ 갤러리 버튼 클릭!');
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation(); // 다른 핸들러 차단
-            this.hideContextMenu();
-            
-            // 짧은 지연 후 갤러리 입력 트리거
-            setTimeout(() => {
-                document.getElementById('gallery-input').click();
-            }, 100);
-        };
-        galleryBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // 기본 터치 동작 방지
-        });
-        galleryBtn.addEventListener('touchend', handleGalleryClick);
-        galleryBtn.addEventListener('click', handleGalleryClick);
-        
-        // 텍스트 버튼
-        const handleTextClick = (e) => {
-            console.log('📝 텍스트 버튼 클릭!');
-            e.preventDefault();
-            e.stopPropagation();
-            e.stopImmediatePropagation(); // 다른 핸들러 차단
-            this.hideContextMenu();
-            
-            // 짧은 지연 후 모달 표시
-            setTimeout(() => {
-                this.showTextInputModal();
-            }, 100);
-        };
-        textBtn.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // 기본 터치 동작 방지
-        });
-        textBtn.addEventListener('touchend', handleTextClick);
-        textBtn.addEventListener('click', handleTextClick);
+        // ⭐ 컨텍스트 메뉴 버튼 이벤트는 showContextMenu에서 등록됨
+        // (메뉴가 표시될 때마다 이벤트 리스너를 새로 등록)
         
         // 카메라/갤러리 파일 입력
         document.getElementById('camera-input').addEventListener('change', (e) => {
@@ -616,14 +557,7 @@ class DxfPhotoEditor {
         const handleOutsideClick = (e) => {
             const contextMenu = document.getElementById('context-menu');
             
-            // 컨텍스트 메뉴가 표시되어 있지 않으면 무시
-            if (!contextMenu.classList.contains('active')) {
-                return;
-            }
-            
-            // 메뉴 버튼을 클릭한 경우 무시 (버튼 자체 핸들러가 처리)
-            if (e.target.closest('.context-menu-item')) {
-                console.log('🎯 메뉴 항목 클릭 감지 (외부 핸들러에서 무시)');
+            if (!contextMenu || !contextMenu.classList.contains('active')) {
                 return;
             }
             
@@ -633,8 +567,10 @@ class DxfPhotoEditor {
                 this.hideContextMenu();
             }
         };
-        document.addEventListener('click', handleOutsideClick);
-        document.addEventListener('touchend', handleOutsideClick);
+        
+        // SVG 영역 클릭 시 메뉴 닫기
+        this.svg.addEventListener('touchstart', handleOutsideClick);
+        this.svg.addEventListener('click', handleOutsideClick);
         
         // 사진 보기 모달 이벤트
         document.getElementById('close-photo-view').addEventListener('click', () => {
@@ -734,7 +670,13 @@ class DxfPhotoEditor {
      * 컨텍스트 메뉴 표시
      */
     showContextMenu(screenX, screenY) {
+        console.log('📋 컨텍스트 메뉴 표시 시작...');
         const contextMenu = document.getElementById('context-menu');
+        
+        if (!contextMenu) {
+            console.error('❌ 컨텍스트 메뉴 요소를 찾을 수 없음!');
+            return;
+        }
         
         // 위치 설정 (화면을 벗어나지 않도록)
         const menuWidth = 200;
@@ -756,6 +698,121 @@ class DxfPhotoEditor {
         contextMenu.style.left = left + 'px';
         contextMenu.style.top = top + 'px';
         contextMenu.classList.add('active');
+        
+        console.log(`✅ 컨텍스트 메뉴 표시됨 (위치: ${left}, ${top})`);
+        
+        // ⭐ 메뉴 표시 직후 이벤트 리스너 등록
+        this.setupContextMenuListeners();
+    }
+    
+    /**
+     * 컨텍스트 메뉴 버튼 이벤트 리스너 등록 (메뉴 표시될 때마다 호출)
+     */
+    setupContextMenuListeners() {
+        console.log('🎯 컨텍스트 메뉴 이벤트 리스너 등록 시작...');
+        
+        const cameraBtn = document.getElementById('camera-btn');
+        const galleryBtn = document.getElementById('gallery-btn');
+        const textBtn = document.getElementById('text-btn');
+        
+        if (!cameraBtn || !galleryBtn || !textBtn) {
+            console.error('❌ 컨텍스트 메뉴 버튼을 찾을 수 없습니다!');
+            return;
+        }
+        
+        console.log('✅ 모든 버튼 요소 발견됨');
+        
+        // 기존 리스너 제거를 위해 클론 사용 (간단한 방법)
+        const newCameraBtn = cameraBtn.cloneNode(true);
+        const newGalleryBtn = galleryBtn.cloneNode(true);
+        const newTextBtn = textBtn.cloneNode(true);
+        
+        cameraBtn.parentNode.replaceChild(newCameraBtn, cameraBtn);
+        galleryBtn.parentNode.replaceChild(newGalleryBtn, galleryBtn);
+        textBtn.parentNode.replaceChild(newTextBtn, textBtn);
+        
+        // 카메라 버튼
+        newCameraBtn.addEventListener('touchend', (e) => {
+            console.log('📷 카메라 버튼 touchend!');
+            e.preventDefault();
+            e.stopPropagation();
+            alert('카메라 버튼 클릭됨!');
+            this.hideContextMenu();
+            setTimeout(() => {
+                const cameraInput = document.getElementById('camera-input');
+                if (cameraInput) {
+                    cameraInput.click();
+                }
+            }, 100);
+        }, { passive: false });
+        
+        newCameraBtn.addEventListener('click', (e) => {
+            console.log('📷 카메라 버튼 click!');
+            e.preventDefault();
+            e.stopPropagation();
+            alert('카메라 버튼 클릭됨!');
+            this.hideContextMenu();
+            setTimeout(() => {
+                const cameraInput = document.getElementById('camera-input');
+                if (cameraInput) {
+                    cameraInput.click();
+                }
+            }, 100);
+        });
+        
+        // 갤러리 버튼
+        newGalleryBtn.addEventListener('touchend', (e) => {
+            console.log('🖼️ 갤러리 버튼 touchend!');
+            e.preventDefault();
+            e.stopPropagation();
+            alert('갤러리 버튼 클릭됨!');
+            this.hideContextMenu();
+            setTimeout(() => {
+                const galleryInput = document.getElementById('gallery-input');
+                if (galleryInput) {
+                    galleryInput.click();
+                }
+            }, 100);
+        }, { passive: false });
+        
+        newGalleryBtn.addEventListener('click', (e) => {
+            console.log('🖼️ 갤러리 버튼 click!');
+            e.preventDefault();
+            e.stopPropagation();
+            alert('갤러리 버튼 클릭됨!');
+            this.hideContextMenu();
+            setTimeout(() => {
+                const galleryInput = document.getElementById('gallery-input');
+                if (galleryInput) {
+                    galleryInput.click();
+                }
+            }, 100);
+        });
+        
+        // 텍스트 버튼
+        newTextBtn.addEventListener('touchend', (e) => {
+            console.log('📝 텍스트 버튼 touchend!');
+            e.preventDefault();
+            e.stopPropagation();
+            alert('텍스트 버튼 클릭됨!');
+            this.hideContextMenu();
+            setTimeout(() => {
+                this.showTextInputModal();
+            }, 100);
+        }, { passive: false });
+        
+        newTextBtn.addEventListener('click', (e) => {
+            console.log('📝 텍스트 버튼 click!');
+            e.preventDefault();
+            e.stopPropagation();
+            alert('텍스트 버튼 클릭됨!');
+            this.hideContextMenu();
+            setTimeout(() => {
+                this.showTextInputModal();
+            }, 100);
+        });
+        
+        console.log('✅ 모든 이벤트 리스너 등록 완료');
     }
     
     /**
