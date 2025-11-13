@@ -959,6 +959,38 @@
         }, { passive: false });
     </script>
     
+    <!-- vConsole: 모바일 디버깅 콘솔 (개발용) -->
+    <script src="https://unpkg.com/vconsole@latest/dist/vconsole.min.js"></script>
+    <script>
+        // vConsole 초기화
+        var vConsole = new window.VConsole({
+            defaultPlugins: ['system', 'network', 'element', 'storage'],
+            maxLogNumber: 1000,
+            theme: 'dark', // 다크 테마 (light 또는 dark)
+            onReady: function () {
+                console.log('📱 vConsole 준비 완료!');
+                console.log('💡 TIP: 화면 우측 하단의 녹색 버튼을 터치하여 콘솔을 열 수 있습니다');
+                console.log('🔍 사진 추가 시 모든 로그가 실시간으로 표시됩니다');
+            },
+            onClearLog: function () {
+                console.log('🧹 로그가 지워졌습니다');
+            }
+        });
+        
+        // vConsole 버튼 스타일 커스터마이징 (선택사항)
+        setTimeout(() => {
+            const vcBtn = document.querySelector('.vc-switch');
+            if (vcBtn) {
+                // 버튼 크기 조정
+                vcBtn.style.width = '50px';
+                vcBtn.style.height = '50px';
+                // 버튼 위치 조정 (햄버거 메뉴와 겹치지 않도록)
+                vcBtn.style.right = '20px';
+                vcBtn.style.bottom = '150px'; // 확대/축소 버튼 위로 이동
+            }
+        }, 500);
+    </script>
+    
     <!-- Google Drive 모듈 (먼저 로드) -->
     <script src="google-drive.js"></script>
     

@@ -517,44 +517,84 @@ class DxfPhotoEditor {
         // (메뉴가 표시될 때마다 이벤트 리스너를 새로 등록)
         
         // 카메라/갤러리 파일 입력
-        document.getElementById('camera-input').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            console.log('📸 카메라 입력 변경 감지:', file?.name);
-            console.log('   롱프레스 위치:', this.longPressPosition);
-            
-            if (file) {
+        document.getElementById('camera-input').addEventListener('change', async (e) => {
+            try {
+                const file = e.target.files[0];
+                console.log('📸 카메라 입력 변경 감지!');
+                console.log('   파일:', file);
+                console.log('   파일명:', file?.name);
+                console.log('   파일 크기:', file?.size, 'bytes');
+                console.log('   파일 타입:', file?.type);
+                console.log('   롱프레스 위치:', this.longPressPosition);
+                
+                if (!file) {
+                    console.warn('⚠️ 선택된 파일이 없습니다');
+                    this.showToast('⚠️ 파일이 선택되지 않았습니다');
+                    return;
+                }
+                
+                if (!file.type.startsWith('image/')) {
+                    console.error('❌ 이미지 파일이 아닙니다:', file.type);
+                    this.showToast('⚠️ 이미지 파일만 선택할 수 있습니다');
+                    return;
+                }
+                
                 // ViewBox 좌표로 변환된 위치 사용
                 const position = {
                     x: this.longPressPosition.x,
                     y: this.longPressPosition.y
                 };
                 console.log('   → 사진 추가 위치:', position);
-                this.addPhotoAt(file, position);
-            } else {
-                console.warn('⚠️ 선택된 파일이 없습니다');
+                
+                this.showToast('📸 사진 처리 중...');
+                await this.addPhotoAt(file, position);
+                
+            } catch (error) {
+                console.error('❌ 카메라 입력 처리 오류:', error);
+                this.showToast(`⚠️ 사진 추가 실패: ${error.message}`);
+            } finally {
+                e.target.value = ''; // 초기화
             }
-            
-            e.target.value = ''; // 초기화
         });
         
-        document.getElementById('gallery-input').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            console.log('🖼️ 갤러리 입력 변경 감지:', file?.name);
-            console.log('   롱프레스 위치:', this.longPressPosition);
-            
-            if (file) {
+        document.getElementById('gallery-input').addEventListener('change', async (e) => {
+            try {
+                const file = e.target.files[0];
+                console.log('🖼️ 갤러리 입력 변경 감지!');
+                console.log('   파일:', file);
+                console.log('   파일명:', file?.name);
+                console.log('   파일 크기:', file?.size, 'bytes');
+                console.log('   파일 타입:', file?.type);
+                console.log('   롱프레스 위치:', this.longPressPosition);
+                
+                if (!file) {
+                    console.warn('⚠️ 선택된 파일이 없습니다');
+                    this.showToast('⚠️ 파일이 선택되지 않았습니다');
+                    return;
+                }
+                
+                if (!file.type.startsWith('image/')) {
+                    console.error('❌ 이미지 파일이 아닙니다:', file.type);
+                    this.showToast('⚠️ 이미지 파일만 선택할 수 있습니다');
+                    return;
+                }
+                
                 // ViewBox 좌표로 변환된 위치 사용
                 const position = {
                     x: this.longPressPosition.x,
                     y: this.longPressPosition.y
                 };
                 console.log('   → 사진 추가 위치:', position);
-                this.addPhotoAt(file, position);
-            } else {
-                console.warn('⚠️ 선택된 파일이 없습니다');
+                
+                this.showToast('🖼️ 사진 처리 중...');
+                await this.addPhotoAt(file, position);
+                
+            } catch (error) {
+                console.error('❌ 갤러리 입력 처리 오류:', error);
+                this.showToast(`⚠️ 사진 추가 실패: ${error.message}`);
+            } finally {
+                e.target.value = ''; // 초기화
             }
-            
-            e.target.value = ''; // 초기화
         });
         
         // 텍스트 입력 모달
@@ -1555,24 +1595,36 @@ class DxfPhotoEditor {
      */
     redraw() {
         // requestAnimationFrame으로 부드러운 렌더링
-        if (this.redrawPending) return;
+        if (this.redrawPending) {
+            console.log('   ⏸️ redraw 이미 대기 중, 건너뜀');
+            return;
+        }
         
         this.redrawPending = true;
+        console.log('   ▶ redraw 예약됨 (requestAnimationFrame)');
         
         requestAnimationFrame(() => {
             this.redrawPending = false;
+            console.log('   🎨 redraw 실행 중...');
             
             if (!this.dxfData) {
+                console.log('      DXF 데이터 없음 - 환영 화면 표시');
                 this.drawWelcomeScreen();
                 this.clearCanvas();
                 return;
             }
             
             // 1. SVG로 DXF 렌더링 (벡터)
+            console.log('      1️⃣ SVG DXF 그리기...');
             this.drawDxfSvg();
             
             // 2. Canvas로 사진 렌더링 (래스터)
+            console.log('      2️⃣ Canvas 사진/텍스트 그리기...');
+            console.log('         사진 개수:', this.photos.length);
+            console.log('         텍스트 개수:', this.texts.length);
             this.drawPhotosCanvas();
+            
+            console.log('   ✅ redraw 완료');
         });
     }
     
@@ -1978,19 +2030,26 @@ class DxfPhotoEditor {
     }
     
     drawPhotosCanvas() {
+        console.log('         🖼️ drawPhotosCanvas 시작');
         // Canvas 초기화 (투명) - 한 번에 처리
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        console.log('            Canvas 초기화 완료 (크기:', this.canvas.width, 'x', this.canvas.height, ')');
         
         // 사진과 텍스트가 없으면 빠르게 리턴
         if (this.photos.length === 0 && this.texts.length === 0) {
+            console.log('            사진/텍스트 없음 - 건너뜀');
             return;
         }
         
         // 사진 마커 그리기
+        console.log('            사진 그리기 시작 (' + this.photos.length + '개)');
         this.drawPhotos();
         
         // 텍스트 그리기
+        console.log('            텍스트 그리기 시작 (' + this.texts.length + '개)');
         this.drawTexts();
+        
+        console.log('         ✅ drawPhotosCanvas 완료');
     }
     
     /**
@@ -2035,14 +2094,29 @@ class DxfPhotoEditor {
      */
     drawPhotos() {
         const rect = this.getCachedRect();
+        console.log('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
+        console.log('               ViewBox:', this.viewBox);
+        console.log('               Canvas rect:', rect);
         
-        this.photos.forEach(photo => {
+        this.photos.forEach((photo, index) => {
+            console.log(`               사진 ${index + 1}/${this.photos.length}:`, {
+                id: photo.id,
+                fileName: photo.fileName,
+                x: photo.x,
+                y: photo.y,
+                width: photo.width,
+                height: photo.height
+            });
+            
             // ViewBox 좌표 → 스크린 좌표 변환
             const centerX = ((photo.x + photo.width / 2 - this.viewBox.x) / this.viewBox.width) * rect.width;
             const centerY = ((photo.y + photo.height / 2 - this.viewBox.y) / this.viewBox.height) * rect.height;
             
+            console.log(`                  스크린 좌표: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})`);
+            
             // 이모지 크기 (ViewBox에 비례)
             const emojiSize = Math.max(40, (photo.width / this.viewBox.width) * rect.width);
+            console.log(`                  이모지 크기: ${emojiSize.toFixed(1)}px`);
             
             this.ctx.save();
             
@@ -2070,7 +2144,10 @@ class DxfPhotoEditor {
             }
             
             this.ctx.restore();
+            console.log(`                  ✓ 사진 ${index + 1} 그리기 완료`);
         });
+        
+        console.log('               ✅ drawPhotos 완료 - 총', this.photos.length, '개 그림');
     }
     
     /**
@@ -2079,34 +2156,45 @@ class DxfPhotoEditor {
      * @param {Object} position - {x, y} ViewBox 좌표
      */
     async addPhotoAt(file, position) {
-        console.log('📷 addPhotoAt 호출됨:', { file: file?.name, position });
+        console.log('====================================');
+        console.log('📷 addPhotoAt 호출됨');
+        console.log('   파일:', file);
+        console.log('   파일명:', file?.name);
+        console.log('   파일 크기:', file?.size, 'bytes');
+        console.log('   위치:', position);
+        console.log('====================================');
         
         if (!file) {
             console.warn('⚠️ 파일이 없습니다');
+            this.showToast('⚠️ 파일이 선택되지 않았습니다');
             return;
         }
         
         if (!position) {
             console.error('❌ 위치 정보가 없습니다');
+            this.showToast('⚠️ 위치 정보가 없습니다');
             return;
         }
         
         if (typeof position.x !== 'number' || typeof position.y !== 'number') {
             console.error('❌ 위치 좌표가 올바르지 않습니다:', position);
+            this.showToast('⚠️ 위치 좌표가 올바르지 않습니다');
             return;
         }
         
-        console.log('📷 사진 추가 시작:', file.name);
+        console.log('▶ 사진 추가 프로세스 시작:', file.name);
         console.log('   위치:', { x: position.x, y: position.y });
         this.showLoading(true);
         
         try {
             // 이미지 로드
-            console.log('   → 이미지 데이터 읽기 중...');
+            console.log('1️⃣ 이미지 데이터 읽기 시작...');
             const imageData = await this.readFileAsDataURL(file);
+            console.log('   ✓ 이미지 데이터 읽기 완료 (길이:', imageData?.length, ')');
             
-            console.log('   → 이미지 로드 중...');
+            console.log('2️⃣ 이미지 객체 생성 시작...');
             const image = await this.loadImage(imageData);
+            console.log('   ✓ 이미지 로드 완료 (크기:', image.width, 'x', image.height, ')');
             
             // 사진 크기를 ViewBox 크기의 10%로 설정
             const photoWidth = this.viewBox.width * 0.1;
@@ -2124,22 +2212,36 @@ class DxfPhotoEditor {
                 fileName: file.name
             };
             
-            console.log('   → 사진 객체 생성:', { x: photo.x, y: photo.y, width: photo.width, height: photo.height });
+            console.log('3️⃣ 사진 객체 생성 완료:', {
+                id: photo.id,
+                x: photo.x,
+                y: photo.y,
+                width: photo.width,
+                height: photo.height,
+                fileName: photo.fileName
+            });
             
             this.photos.push(photo);
-            console.log(`   → 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
+            console.log(`4️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
+            console.log('   현재 사진 목록:', this.photos.map(p => ({ id: p.id, fileName: p.fileName })));
             
+            console.log('5️⃣ 화면 다시 그리기 시작...');
             this.redraw();
-            console.log('   → 화면 다시 그리기 완료');
+            console.log('   ✓ 화면 다시 그리기 완료');
             
             console.log('✅ 사진 추가 완료:', photo.fileName);
+            this.showToast(`✅ 사진 추가됨: ${file.name}`);
             
             // Google Drive 자동 저장
-            this.autoSave();
+            console.log('6️⃣ 자동 저장 시작...');
+            await this.autoSave();
             
         } catch (error) {
-            console.error('❌ 사진 추가 오류:', error);
-            alert('사진을 추가하는데 실패했습니다.\n\n' + error.message);
+            console.error('❌❌❌ 사진 추가 오류 ❌❌❌');
+            console.error('오류 내용:', error);
+            console.error('오류 스택:', error.stack);
+            this.showToast(`❌ 사진 추가 실패: ${error.message}`);
+            throw error; // 에러를 다시 던져서 상위에서도 처리할 수 있게 함
         } finally {
             this.showLoading(false);
         }
@@ -2157,18 +2259,32 @@ class DxfPhotoEditor {
     
     readFileAsDataURL(file) {
         return new Promise((resolve, reject) => {
+            console.log('   📖 FileReader 시작...');
             const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target.result);
-            reader.onerror = reject;
+            reader.onload = (e) => {
+                console.log('   ✓ FileReader 완료');
+                resolve(e.target.result);
+            };
+            reader.onerror = (error) => {
+                console.error('   ❌ FileReader 오류:', error);
+                reject(new Error('파일 읽기 실패: ' + error));
+            };
             reader.readAsDataURL(file);
         });
     }
     
     loadImage(src) {
         return new Promise((resolve, reject) => {
+            console.log('   🖼️ Image 객체 생성...');
             const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = reject;
+            img.onload = () => {
+                console.log('   ✓ Image 로드 성공:', img.width, 'x', img.height);
+                resolve(img);
+            };
+            img.onerror = (error) => {
+                console.error('   ❌ Image 로드 오류:', error);
+                reject(new Error('이미지 로드 실패'));
+            };
             img.src = src;
         });
     }
