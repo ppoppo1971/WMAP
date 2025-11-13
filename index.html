@@ -101,6 +101,10 @@
             cursor: grab;
             touch-action: none; /* 앱 내부에서 직접 제어 */
             will-change: transform; /* GPU 가속 */
+            /* 컨텍스트 메뉴 방지 */
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
 
         #svg:active {
@@ -120,6 +124,10 @@
         
         .canvas-container {
             touch-action: none; /* 확대/축소 방지 */
+            /* 컨텍스트 메뉴 방지 */
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
 
         /* SVG 내부 모든 요소의 선 굵기 강제 */
@@ -754,7 +762,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택0523</h2>
+                <h2>📁 DXF 도면 선택0529</h2>
             </div>
             
             <div class="file-list-actions">

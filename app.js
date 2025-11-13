@@ -468,6 +468,14 @@ class DxfPhotoEditor {
         this.svg.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
         this.svg.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
         
+        // contextmenu 이벤트 방지 (롱프레스 시 브라우저 메뉴 대신 커스텀 메뉴)
+        this.svg.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('🚫 SVG contextmenu 차단됨');
+            return false;
+        }, { passive: false });
+        
         // 사진 클릭은 SVG 클릭 이벤트에서 처리 (Canvas는 pointer-events: none 유지)
         this.svg.addEventListener('click', this.onCanvasClick.bind(this));
         
@@ -709,6 +717,8 @@ class DxfPhotoEditor {
      * 롱프레스 시작
      */
     startLongPress(clientX, clientY) {
+        console.log('⏱️ startLongPress 호출됨 - 타이머 시작');
+        
         // 기존 타이머 취소
         this.cancelLongPress();
         
@@ -732,7 +742,9 @@ class DxfPhotoEditor {
         console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(2)}, y=${this.viewBox.y.toFixed(2)}, w=${this.viewBox.width.toFixed(2)}, h=${this.viewBox.height.toFixed(2)}`);
         
         // 타이머 시작
+        console.log(`⏱️ 롱프레스 타이머 설정 (${this.longPressDuration}ms)`);
         this.longPressTimer = setTimeout(() => {
+            console.log('⏱️ 롱프레스 타이머 완료 - onLongPress 호출');
             this.onLongPress();
         }, this.longPressDuration);
     }
@@ -742,6 +754,7 @@ class DxfPhotoEditor {
      */
     cancelLongPress() {
         if (this.longPressTimer) {
+            console.log('⏱️ 롱프레스 타이머 취소됨');
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
         }
@@ -2646,6 +2659,8 @@ class DxfPhotoEditor {
      * 터치 시작 이벤트 (핀치줌 지원 + 롱프레스 통합)
      */
     onTouchStart(e) {
+        console.log('👆 onTouchStart - 터치 개수:', e.touches.length);
+        
         // 기본 브라우저 동작 방지 (페이지 확대/축소 방지)
         e.preventDefault();
         
