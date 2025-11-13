@@ -2320,7 +2320,10 @@ class DxfPhotoEditor {
             
             console.log(`   사진 ${index + 1}:`);
             console.log(`      DXF 절대좌표: (${photo.x.toFixed(2)}, ${photo.y.toFixed(2)})`);
-            console.log(`      스크린 좌표: (${screenX.toFixed(2)}, ${screenY.toFixed(2)})`);
+            console.log(`      변환 계산:`);
+            console.log(`         X: (${photo.x.toFixed(2)} - ${this.viewBox.x.toFixed(2)}) / ${this.viewBox.width.toFixed(2)} * ${rect.width.toFixed(2)} = ${screenX.toFixed(2)}`);
+            console.log(`         Y: (${photo.y.toFixed(2)} - ${this.viewBox.y.toFixed(2)}) / ${this.viewBox.height.toFixed(2)} * ${rect.height.toFixed(2)} = ${screenY.toFixed(2)}`);
+            console.log(`      최종 스크린 좌표: (${screenX.toFixed(2)}, ${screenY.toFixed(2)})`);
             
             // 화면 밖에 있으면 그리지 않음
             if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
@@ -2330,22 +2333,22 @@ class DxfPhotoEditor {
             
             this.ctx.save();
             
-            // 원으로 표시 (5px 고정)
+            // 원으로 표시 (50px 고정 - 10배 크게)
             this.ctx.fillStyle = '#FF0000'; // 빨간색
             this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, 2.5, 0, Math.PI * 2); // 반지름 2.5px (직경 5px)
+            this.ctx.arc(screenX, screenY, 25, 0, Math.PI * 2); // 반지름 25px (직경 50px)
             this.ctx.fill();
             
             // 테두리 (흰색, 더 잘 보이게)
             this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = 0.5;
+            this.ctx.lineWidth = 3;
             this.ctx.stroke();
             
             // 메모가 있으면 작은 점 추가
             if (photo.memo && photo.memo.trim()) {
                 this.ctx.fillStyle = '#0000FF';
                 this.ctx.beginPath();
-                this.ctx.arc(screenX + 4, screenY - 4, 1.5, 0, Math.PI * 2);
+                this.ctx.arc(screenX + 20, screenY - 20, 8, 0, Math.PI * 2);
                 this.ctx.fill();
             }
             
