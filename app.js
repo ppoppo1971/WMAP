@@ -716,13 +716,20 @@ class DxfPhotoEditor {
         this.longPressPosition.screenX = clientX;
         this.longPressPosition.screenY = clientY;
         
-        // ViewBox 좌표로 변환
+        // DXF 절대 좌표로 변환
+        // ViewBox는 DXF의 실제 좌표 범위를 나타냄
+        // 따라서 이 변환은 스크린 → DXF 실제 절대 좌표
         const rect = this.svg.getBoundingClientRect();
-        const svgX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
-        const svgY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+        const dxfX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
+        const dxfY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
         
-        this.longPressPosition.x = svgX;
-        this.longPressPosition.y = svgY;
+        this.longPressPosition.x = dxfX;
+        this.longPressPosition.y = dxfY;
+        
+        console.log('🖱️ 롱프레스 좌표 변환:');
+        console.log(`   스크린: (${clientX.toFixed(0)}, ${clientY.toFixed(0)})`);
+        console.log(`   DXF 절대좌표: (${dxfX.toFixed(2)}, ${dxfY.toFixed(2)})`);
+        console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(2)}, y=${this.viewBox.y.toFixed(2)}, w=${this.viewBox.width.toFixed(2)}, h=${this.viewBox.height.toFixed(2)}`);
         
         // 타이머 시작
         this.longPressTimer = setTimeout(() => {
@@ -2266,57 +2273,74 @@ class DxfPhotoEditor {
     
     /**
      * 사진을 작은 점(●)으로 표시
-     * 수정: 
-     * - 이모지 대신 작은 점(●) 사용
-     * - 크기 15px로 고정 (가시성 확보)
-     * - ViewBox 좌표에 완전 고정
+     * 
+     * 중요: photo.x, photo.y는 DXF의 실제 절대 좌표입니다!
+     * - ViewBox는 DXF 파일의 실제 좌표 범위를 나타냄
+     * - photo.x, photo.y는 DXF 도면상의 절대 위치 (단위: mm 또는 도면 단위)
+     * - 확대/축소/이동해도 동일한 DXF 위치에 고정됨
+     * 
+     * 좌표 변환: DXF 절대 좌표 → 스크린 픽셀
      */
     drawPhotos() {
+        if (!this.svg) {
+            console.warn('⚠️ SVG가 없어서 사진을 그릴 수 없습니다');
+            return;
+        }
+        
         const rect = this.getCachedRect();
-        console.log('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
+        console.log('📷 drawPhotos 실행:');
+        console.log(`   사진 개수: ${this.photos.length}`);
+        console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(2)}, y=${this.viewBox.y.toFixed(2)}, w=${this.viewBox.width.toFixed(2)}, h=${this.viewBox.height.toFixed(2)}`);
+        console.log(`   화면 크기: ${rect.width}x${rect.height}`);
         
         this.photos.forEach((photo, index) => {
-            // ViewBox 좌표 → 스크린 좌표 변환
-            // photo.x, photo.y는 ViewBox 좌표계에 고정
+            // DXF 절대 좌표 → 스크린 좌표 변환
+            // photo.x, photo.y = DXF 도면의 절대 위치 (변하지 않음)
+            // ViewBox = 현재 보고 있는 DXF 범위 (확대/축소/이동으로 변함)
             const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
             const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
             
+            console.log(`   사진 ${index + 1}:`);
+            console.log(`      DXF 절대좌표: (${photo.x.toFixed(2)}, ${photo.y.toFixed(2)})`);
+            console.log(`      스크린 좌표: (${screenX.toFixed(2)}, ${screenY.toFixed(2)})`);
+            
             // 화면 밖에 있으면 그리지 않음
             if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
+                console.log(`      → 화면 밖이므로 스킵`);
                 return;
             }
             
             this.ctx.save();
             
-            // 작은 원으로 표시 (15px 고정)
+            // 작은 원으로 표시 (1.5px 고정 - 기존의 10%)
             this.ctx.fillStyle = '#FF0000'; // 빨간색
             this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, 7.5, 0, Math.PI * 2); // 반지름 7.5px (직경 15px)
+            this.ctx.arc(screenX, screenY, 0.75, 0, Math.PI * 2); // 반지름 0.75px (직경 1.5px)
             this.ctx.fill();
             
             // 테두리 (흰색, 더 잘 보이게)
             this.ctx.strokeStyle = '#FFFFFF';
-            this.ctx.lineWidth = 2;
+            this.ctx.lineWidth = 0.2; // 테두리도 비례해서 축소
             this.ctx.stroke();
             
             // 메모가 있으면 작은 점 추가
             if (photo.memo && photo.memo.trim()) {
                 this.ctx.fillStyle = '#0000FF';
                 this.ctx.beginPath();
-                this.ctx.arc(screenX + 10, screenY - 10, 3, 0, Math.PI * 2);
+                this.ctx.arc(screenX + 1, screenY - 1, 0.3, 0, Math.PI * 2); // 메모 표시도 축소
                 this.ctx.fill();
             }
             
             this.ctx.restore();
         });
         
-        console.log('               ✅ drawPhotos 완료 - 총', this.photos.length, '개 그림');
+        console.log('✅ drawPhotos 완료');
     }
     
     /**
      * 특정 위치에 사진 추가
      * @param {File} file - 이미지 파일
-     * @param {Object} position - {x, y} ViewBox 좌표
+     * @param {Object} position - {x, y} DXF 절대 좌표 (ViewBox 좌표 = DXF 실제 좌표)
      */
     async addPhotoAt(file, position) {
         console.log('====================================');
@@ -2370,14 +2394,16 @@ class DxfPhotoEditor {
             await new Promise(resolve => setTimeout(resolve, 500)); // 0.5초 대기
             
             // 사진 객체 생성
-            // x, y: ViewBox 좌표계에 고정 (롱프레스한 위치)
-            // width, height: 화면 표시용이 아닌 메타데이터 용도 (항상 고정값)
+            // x, y: DXF 절대 좌표 (도면의 실제 좌표, mm 또는 도면 단위)
+            //       ViewBox는 DXF의 실제 좌표 범위이므로 position.x/y는 DXF 절대 좌표
+            //       확대/축소/이동해도 변하지 않는 고정 좌표
+            // width, height: 메타데이터 용도 (화면 표시는 1.5px 고정)
             const photo = {
                 id: Date.now(),
-                x: position.x,  // ViewBox 좌표 (고정)
-                y: position.y,  // ViewBox 좌표 (고정)
-                width: 1,       // 더미값 (화면 표시는 픽셀 기준 25px 고정)
-                height: 1,      // 더미값 (화면 표시는 픽셀 기준 25px 고정)
+                x: position.x,  // DXF 절대 좌표 X (고정)
+                y: position.y,  // DXF 절대 좌표 Y (고정)
+                width: 1,       // 더미값 (화면 표시는 픽셀 기준 1.5px 고정)
+                height: 1,      // 더미값 (화면 표시는 픽셀 기준 1.5px 고정)
                 imageData: compressedImageData, // 압축된 이미지 사용
                 image: image,
                 memo: '',
@@ -2385,14 +2411,10 @@ class DxfPhotoEditor {
                 uploaded: false // 업로드 상태 추적
             };
             
-            console.log('4️⃣ 사진 객체 생성 완료:', {
-                id: photo.id,
-                x: photo.x,
-                y: photo.y,
-                width: photo.width,
-                height: photo.height,
-                fileName: photo.fileName
-            });
+            console.log('4️⃣ 사진 객체 생성 완료:');
+            console.log(`   ID: ${photo.id}`);
+            console.log(`   DXF 절대좌표: (${photo.x.toFixed(2)}, ${photo.y.toFixed(2)})`);
+            console.log(`   파일명: ${photo.fileName}`);
             
             this.photos.push(photo);
             console.log(`5️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
