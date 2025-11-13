@@ -1212,22 +1212,67 @@ class DxfPhotoEditor {
         const fileListDiv = document.getElementById('file-list');
         
         if (!files || files.length === 0) {
-            fileListDiv.innerHTML = '<p class="info-text">📭 DXF 파일이 없습니다.</p>';
+            fileListDiv.innerHTML = '<p class="info-text">📭 파일이 없습니다.</p>';
             return;
         }
         
         fileListDiv.innerHTML = '';
         
         files.forEach(file => {
+            const isDxf = file.name.toLowerCase().endsWith('.dxf');
+            const isImage = /\.(jpg|jpeg|png|gif)$/i.test(file.name);
+            const isMetadata = file.name.endsWith('_metadata.json');
+            
+            // 메타데이터 파일은 숨김
+            if (isMetadata) return;
+            
             const fileItem = document.createElement('div');
             fileItem.className = 'file-item';
+            
+            // 파일 타입별 아이콘
+            let icon = '📄';
+            if (isDxf) icon = '📐';
+            else if (isImage) icon = '🖼️';
+            
             fileItem.innerHTML = `
-                <div class="file-item-name">📐 ${file.name}</div>
+                <div class="file-item-name">${icon} ${file.name}</div>
                 <div class="file-item-date">${new Date(file.modifiedTime).toLocaleString('ko-KR')}</div>
             `;
             
             fileItem.addEventListener('click', async () => {
-                await this.openDxfFromDrive(file);
+                if (isDxf) {
+                    // DXF 파일은 뷰어로 열기
+                    await this.openDxfFromDrive(file);
+                } else if (isImage) {
+                    // 이미지 파일은 새 탭에서 열기
+                    this.showToast('🖼️ 이미지 다운로드 중...');
+                    try {
+                        const content = await window.downloadDxfFile(file.id);
+                        const link = document.createElement('a');
+                        link.href = content;
+                        link.download = file.name;
+                        link.target = '_blank';
+                        link.click();
+                        this.showToast('✅ 다운로드 완료');
+                    } catch (error) {
+                        console.error('파일 다운로드 실패:', error);
+                        this.showToast('⚠️ 다운로드 실패');
+                    }
+                } else {
+                    // 다른 파일은 다운로드
+                    this.showToast('📥 파일 다운로드 중...');
+                    try {
+                        const content = await window.downloadDxfFile(file.id);
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(new Blob([content]));
+                        link.download = file.name;
+                        link.click();
+                        this.showToast('✅ 다운로드 완료');
+                    } catch (error) {
+                        console.error('파일 다운로드 실패:', error);
+                        this.showToast('⚠️ 다운로드 실패');
+                    }
+                }
             });
             
             fileListDiv.appendChild(fileItem);
@@ -1255,8 +1300,15 @@ class DxfPhotoEditor {
             
             console.log('📁 현재 드라이브 파일 설정됨:', window.currentDriveFile);
             
+            // 사진/텍스트 데이터 초기화 (메타데이터 로드 전)
+            this.photos = [];
+            this.texts = [];
+            
             // DXF 파싱 및 렌더링
             this.loadDxfFromText(fileContent, file.name);
+            
+            // 메타데이터 로드 및 사진/텍스트 표시
+            await this.loadMetadataAndDisplay(file.name);
             
             this.showLoading(false);
             
@@ -1267,6 +1319,90 @@ class DxfPhotoEditor {
             
             // 오류 시 다시 파일 목록으로
             this.showFileList();
+        }
+    }
+    
+    /**
+     * 메타데이터 로드 및 사진/텍스트 표시
+     */
+    async loadMetadataAndDisplay(dxfFileName) {
+        try {
+            console.log('📋 메타데이터 로드 시작:', dxfFileName);
+            
+            if (!window.driveManager || !window.driveManager.loadMetadata) {
+                console.warn('⚠️ Google Drive 메타데이터 기능 없음');
+                return;
+            }
+            
+            const metadata = await window.driveManager.loadMetadata(dxfFileName);
+            
+            if (!metadata || (!metadata.photos && !metadata.texts)) {
+                console.log('   메타데이터 없음');
+                return;
+            }
+            
+            console.log('✅ 메타데이터 로드 완료:', {
+                photosCount: metadata.photos?.length || 0,
+                textsCount: metadata.texts?.length || 0
+            });
+            
+            // 사진 로드
+            if (metadata.photos && metadata.photos.length > 0) {
+                console.log('📷 사진 복원 시작:', metadata.photos.length + '개');
+                this.showToast('📷 사진 로딩 중...');
+                
+                for (const photoMeta of metadata.photos) {
+                    try {
+                        // Google Drive에서 사진 파일 다운로드
+                        const photoContent = await window.downloadFileByName(photoMeta.fileName);
+                        
+                        if (photoContent) {
+                            const img = new Image();
+                            await new Promise((resolve, reject) => {
+                                img.onload = resolve;
+                                img.onerror = reject;
+                                img.src = photoContent;
+                            });
+                            
+                            this.photos.push({
+                                id: photoMeta.id,
+                                x: photoMeta.position.x,
+                                y: photoMeta.position.y,
+                                width: photoMeta.size.width,
+                                height: photoMeta.size.height,
+                                imageData: photoContent,
+                                image: img,
+                                memo: photoMeta.memo || '',
+                                fileName: photoMeta.fileName,
+                                uploaded: true // 이미 업로드됨
+                            });
+                            
+                            console.log('   ✓ 사진 복원:', photoMeta.fileName);
+                        }
+                    } catch (error) {
+                        console.warn('   ⚠️ 사진 복원 실패:', photoMeta.fileName, error);
+                    }
+                }
+                
+                console.log('✅ 사진 복원 완료:', this.photos.length + '개');
+            }
+            
+            // 텍스트 로드
+            if (metadata.texts && metadata.texts.length > 0) {
+                console.log('📝 텍스트 복원:', metadata.texts.length + '개');
+                this.texts = metadata.texts;
+            }
+            
+            // 화면 다시 그리기
+            this.redraw();
+            
+            if (this.photos.length > 0 || this.texts.length > 0) {
+                this.showToast(`✅ 데이터 로드 완료 (사진: ${this.photos.length}, 텍스트: ${this.texts.length})`);
+            }
+            
+        } catch (error) {
+            console.error('❌ 메타데이터 로드 실패:', error);
+            // 실패해도 계속 진행 (선택적 기능)
         }
     }
     
@@ -1304,6 +1440,11 @@ class DxfPhotoEditor {
             // 로컬 파일을 열 때는 Google Drive 파일 정보 초기화
             window.currentDriveFile = null;
             console.log('📁 로컬 파일 열기 - currentDriveFile 초기화');
+            
+            // 사진/텍스트 데이터 초기화 (로컬 파일에는 메타데이터 없음)
+            this.photos = [];
+            this.texts = [];
+            console.log('   사진/텍스트 데이터 초기화');
             
             // 1. 파일 읽기
             const text = await file.text();
@@ -2145,8 +2286,9 @@ class DxfPhotoEditor {
      * 사진을 이모지(📷)로 표시 (최적화: rect 캐싱)
      * 수정: 
      * - 파란색 원형 제거
-     * - 이모지 크기를 화면 픽셀 기준으로 완전 고정 (30px)
+     * - 이모지 크기를 화면 픽셀 기준으로 완전 고정 (25px)
      * - 확대/축소해도 이모지 크기는 항상 동일
+     * - ViewBox 좌표에 고정 (드래그해도 이동 안 됨)
      */
     drawPhotos() {
         const rect = this.getCachedRect();
@@ -2158,13 +2300,18 @@ class DxfPhotoEditor {
             const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
             const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
             
-            // 이모지 크기를 화면 픽셀 기준으로 완전 고정 (30px)
-            // ViewBox의 확대/축소와 무관하게 항상 30px로 표시
-            const emojiSize = 30;
+            // 화면 밖에 있으면 그리지 않음 (성능 최적화)
+            if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
+                return;
+            }
+            
+            // 이모지 크기를 화면 픽셀 기준으로 완전 고정 (25px)
+            // ViewBox의 확대/축소와 무관하게 항상 25px로 표시
+            const emojiSize = 25;
             
             this.ctx.save();
             
-            // 카메라 이모지 표시 (화면 픽셀 기준 30px 고정)
+            // 카메라 이모지 표시 (화면 픽셀 기준 25px 고정)
             this.ctx.font = `${emojiSize}px Arial`;
             this.ctx.textAlign = 'center';
             this.ctx.textBaseline = 'middle';
@@ -2245,12 +2392,13 @@ class DxfPhotoEditor {
                 id: Date.now(),
                 x: position.x,  // ViewBox 좌표 (고정)
                 y: position.y,  // ViewBox 좌표 (고정)
-                width: 1,       // 더미값 (화면 표시는 픽셀 기준 30px 고정)
-                height: 1,      // 더미값 (화면 표시는 픽셀 기준 30px 고정)
+                width: 1,       // 더미값 (화면 표시는 픽셀 기준 25px 고정)
+                height: 1,      // 더미값 (화면 표시는 픽셀 기준 25px 고정)
                 imageData: compressedImageData, // 압축된 이미지 사용
                 image: image,
                 memo: '',
-                fileName: file.name
+                fileName: file.name,
+                uploaded: false // 업로드 상태 추적
             };
             
             console.log('4️⃣ 사진 객체 생성 완료:', {
@@ -2771,29 +2919,36 @@ class DxfPhotoEditor {
         const clickX = e.clientX - rect.left;
         const clickY = e.clientY - rect.top;
         
+        console.log('👆 Canvas 클릭:', { clickX, clickY });
+        
         // 이모지 클릭 확인 (원형 영역)
         for (let i = this.photos.length - 1; i >= 0; i--) {
             const photo = this.photos[i];
             
-            // 이모지 중심점 계산
-            const centerX = ((photo.x + photo.width / 2 - this.viewBox.x) / this.viewBox.width) * rect.width;
-            const centerY = ((photo.y + photo.height / 2 - this.viewBox.y) / this.viewBox.height) * rect.height;
+            // 이모지 위치 계산 (고정 크기 25px)
+            const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
+            const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
             
-            // 이모지 크기
-            const emojiSize = Math.max(40, (photo.width / this.viewBox.width) * rect.width);
-            const radius = emojiSize / 2 + 5;
+            // 이모지 크기 고정 (25px) + 클릭 영역은 조금 크게 (40px)
+            const emojiSize = 25;
+            const clickRadius = 40; // 터치하기 쉽게 클릭 영역을 크게
             
             // 거리 계산 (원형 클릭 영역)
             const distance = Math.sqrt(
-                Math.pow(clickX - centerX, 2) + 
-                Math.pow(clickY - centerY, 2)
+                Math.pow(clickX - screenX, 2) + 
+                Math.pow(clickY - screenY, 2)
             );
             
-            if (distance <= radius) {
+            console.log(`   사진 ${i}: 거리=${distance.toFixed(1)}px, 기준=${clickRadius}px`);
+            
+            if (distance <= clickRadius) {
+                console.log(`✅ 사진 ${photo.id} 클릭됨!`);
                 this.openPhotoViewModal(photo.id);
                 return;
             }
         }
+        
+        console.log('   → 사진이 클릭되지 않음');
     }
     
     /**
@@ -2869,15 +3024,42 @@ class DxfPhotoEditor {
         this.autoSave();
     }
     
-    deletePhoto() {
+    async deletePhoto() {
         if (!confirm('이 사진을 삭제하시겠습니까?')) return;
         
-        this.photos = this.photos.filter(p => p.id !== this.selectedPhotoId);
-        this.closeMemoModal();
-        this.redraw();
+        const photoToDelete = this.photos.find(p => p.id === this.selectedPhotoId);
+        if (!photoToDelete) return;
         
-        // Google Drive 자동 저장
-        this.autoSave();
+        console.log('🗑️ 사진 삭제 시작:', photoToDelete.id);
+        
+        try {
+            // Google Drive에서 사진 파일 삭제
+            if (window.currentDriveFile && window.deletePhotoFromDrive) {
+                this.showToast('🗑️ 삭제 중...');
+                const dxfFileName = window.currentDriveFile.name;
+                const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photoToDelete.id}.jpg`;
+                
+                console.log('   Google Drive에서 삭제:', photoFileName);
+                await window.deletePhotoFromDrive(photoFileName);
+                console.log('   ✅ Google Drive 삭제 완료');
+            }
+            
+            // 로컬 배열에서 제거
+            this.photos = this.photos.filter(p => p.id !== this.selectedPhotoId);
+            console.log('   ✅ 로컬 배열에서 제거 완료');
+            
+            this.closePhotoViewModal();
+            this.redraw();
+            
+            // 메타데이터 업데이트
+            await this.autoSave();
+            
+            this.showToast('✅ 사진 삭제 완료');
+            console.log('✅ 사진 삭제 완료:', photoToDelete.id);
+        } catch (error) {
+            console.error('❌ 사진 삭제 실패:', error);
+            this.showToast('⚠️ 삭제 실패: ' + error.message);
+        }
     }
     
     /**
@@ -2902,25 +3084,39 @@ class DxfPhotoEditor {
         }
         
         try {
-            const appData = {
-                photos: this.photos,
-                texts: this.texts
-            };
+            // 업로드되지 않은 사진만 필터링
+            const newPhotos = this.photos.filter(p => !p.uploaded);
             
             console.log('📦 저장할 데이터:', {
-                photosCount: this.photos.length,
+                totalPhotosCount: this.photos.length,
+                newPhotosCount: newPhotos.length,
                 textsCount: this.texts.length,
                 fileName: window.currentDriveFile.name
             });
             
-            const success = await window.saveToDrive(appData, window.currentDriveFile.name);
-            
-            if (success) {
-                console.log('✅ 자동 저장 완료');
-                this.showToast('✅ 저장 완료');
+            // 새로운 사진이 있을 때만 업로드
+            if (newPhotos.length > 0 || this.texts.length > 0) {
+                const appData = {
+                    photos: newPhotos,  // 새로운 사진만
+                    allPhotos: this.photos,  // 전체 사진 목록 (메타데이터용)
+                    texts: this.texts
+                };
+                
+                const success = await window.saveToDrive(appData, window.currentDriveFile.name);
+                
+                if (success) {
+                    // 업로드 성공 시 모든 사진을 uploaded: true로 표시
+                    newPhotos.forEach(photo => {
+                        photo.uploaded = true;
+                    });
+                    console.log('✅ 자동 저장 완료');
+                    this.showToast('✅ 저장 완료');
+                } else {
+                    console.error('❌ 자동 저장 실패 (false 반환)');
+                    this.showToast('⚠️ 저장 실패');
+                }
             } else {
-                console.error('❌ 자동 저장 실패 (false 반환)');
-                this.showToast('⚠️ 저장 실패');
+                console.log('⏭️ 새로운 사진/텍스트 없음 - 업로드 스킵');
             }
         } catch (error) {
             console.error('❌ 자동 저장 오류:', error);

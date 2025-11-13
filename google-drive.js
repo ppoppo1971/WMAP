@@ -308,6 +308,27 @@ class GoogleDriveManager {
     }
 
     /**
+     * 파일 삭제
+     */
+    async deleteFile(fileId) {
+        const response = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${fileId}`,
+            {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`
+                }
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error(`파일 삭제 실패: ${response.statusText}`);
+        }
+
+        return true;
+    }
+
+    /**
      * 로그아웃
      */
     logout() {
@@ -349,11 +370,62 @@ window.initGoogleDrive = async function() {
             return await window.driveManager.downloadFile(fileId);
         };
         
+        // 파일 이름으로 다운로드
+        window.downloadFileByName = async (fileName) => {
+            try {
+                const files = await window.driveManager.listFiles();
+                const file = files.find(f => f.name === fileName);
+                
+                if (file) {
+                    return await window.driveManager.downloadFile(file.id);
+                } else {
+                    console.warn('⚠️ 파일을 찾을 수 없음:', fileName);
+                    return null;
+                }
+            } catch (error) {
+                console.error('❌ 파일 다운로드 실패:', error);
+                return null;
+            }
+        };
+        
+        // Google Drive에서 사진 파일 삭제
+        window.deletePhotoFromDrive = async (photoFileName) => {
+            try {
+                console.log('🗑️ Google Drive에서 사진 삭제:', photoFileName);
+                
+                if (!window.driveManager) {
+                    throw new Error('Google Drive Manager가 초기화되지 않았습니다');
+                }
+                
+                if (!window.driveManager.accessToken) {
+                    throw new Error('Google Drive 로그인이 필요합니다');
+                }
+                
+                // 파일 검색
+                const files = await window.driveManager.listFiles();
+                const fileToDelete = files.find(f => f.name === photoFileName);
+                
+                if (fileToDelete) {
+                    console.log('   파일 발견, 삭제 중:', fileToDelete.id);
+                    await window.driveManager.deleteFile(fileToDelete.id);
+                    console.log('   ✅ 파일 삭제 완료');
+                    return true;
+                } else {
+                    console.warn('   ⚠️ 파일을 찾을 수 없음:', photoFileName);
+                    return false;
+                }
+            } catch (error) {
+                console.error('❌ Google Drive 사진 삭제 실패:', error);
+                throw error;
+            }
+        };
+        
         window.saveToDrive = async (appData, dxfFileName) => {
             try {
                 console.log('💾 Google Drive 저장 시작...');
                 console.log('   파일명:', dxfFileName);
-                console.log('   사진 개수:', appData.photos.length);
+                console.log('   새 사진 개수:', appData.photos.length);
+                console.log('   전체 사진 개수:', appData.allPhotos ? appData.allPhotos.length : 0);
                 console.log('   텍스트 개수:', appData.texts.length);
                 
                 if (!window.driveManager) {
@@ -364,16 +436,18 @@ window.initGoogleDrive = async function() {
                     throw new Error('Google Drive 로그인이 필요합니다');
                 }
                 
-                // 1. 메타데이터 저장
+                // 1. 메타데이터 저장 (전체 사진 목록 사용)
                 console.log('📝 메타데이터 생성 중...');
+                const allPhotos = appData.allPhotos || appData.photos;
                 const metadata = {
                     dxfFile: dxfFileName,
-                    photos: appData.photos.map((photo, index) => ({
+                    photos: allPhotos.map((photo, index) => ({
                         id: photo.id,
-                        fileName: `${dxfFileName.replace('.dxf', '')}_photo_${index + 1}.jpg`,
+                        fileName: `${dxfFileName.replace('.dxf', '')}_photo_${photo.id}.jpg`,
                         position: { x: photo.x, y: photo.y },
                         size: { width: photo.width, height: photo.height },
-                        memo: photo.memo || ''
+                        memo: photo.memo || '',
+                        uploaded: photo.uploaded || false
                     })),
                     texts: appData.texts || [],
                     lastModified: new Date().toISOString()
@@ -383,18 +457,20 @@ window.initGoogleDrive = async function() {
                 await window.driveManager.saveMetadata(dxfFileName, metadata);
                 console.log('✅ 메타데이터 저장 완료');
                 
-                // 2. 사진 파일들 업로드
+                // 2. 새로운 사진 파일들만 업로드
                 if (appData.photos.length > 0) {
-                    console.log(`📸 사진 업로드 시작 (${appData.photos.length}개)...`);
+                    console.log(`📸 새 사진 업로드 시작 (${appData.photos.length}개)...`);
                     for (let i = 0; i < appData.photos.length; i++) {
                         const photo = appData.photos[i];
-                        const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${i + 1}.jpg`;
+                        const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photo.id}.jpg`;
                         
                         console.log(`   [${i + 1}/${appData.photos.length}] ${photoFileName} 업로드 중...`);
                         await window.driveManager.uploadImage(photoFileName, photo.imageData);
                         console.log(`   ✅ ${photoFileName} 업로드 완료`);
                     }
                     console.log('✅ 모든 사진 업로드 완료');
+                } else {
+                    console.log('⏭️ 업로드할 새 사진 없음');
                 }
                 
                 console.log('✅ Google Drive 저장 완료!');
