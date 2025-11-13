@@ -388,21 +388,40 @@ class DxfPhotoEditor {
         // 롱프레스 이벤트 (SVG에 추가)
         this.setupLongPressEvents();
         
-        // 컨텍스트 메뉴 버튼들
-        document.getElementById('camera-btn').addEventListener('click', () => {
+        // 컨텍스트 메뉴 버튼들 (모바일 터치 지원)
+        const cameraBtn = document.getElementById('camera-btn');
+        const galleryBtn = document.getElementById('gallery-btn');
+        const textBtn = document.getElementById('text-btn');
+        
+        // 카메라 버튼
+        const handleCameraClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             this.hideContextMenu();
             document.getElementById('camera-input').click();
-        });
+        };
+        cameraBtn.addEventListener('click', handleCameraClick);
+        cameraBtn.addEventListener('touchend', handleCameraClick);
         
-        document.getElementById('gallery-btn').addEventListener('click', () => {
+        // 갤러리 버튼
+        const handleGalleryClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             this.hideContextMenu();
             document.getElementById('gallery-input').click();
-        });
+        };
+        galleryBtn.addEventListener('click', handleGalleryClick);
+        galleryBtn.addEventListener('touchend', handleGalleryClick);
         
-        document.getElementById('text-btn').addEventListener('click', () => {
+        // 텍스트 버튼
+        const handleTextClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
             this.hideContextMenu();
             this.showTextInputModal();
-        });
+        };
+        textBtn.addEventListener('click', handleTextClick);
+        textBtn.addEventListener('touchend', handleTextClick);
         
         // 카메라/갤러리 파일 입력
         document.getElementById('camera-input').addEventListener('change', (e) => {
@@ -424,14 +443,16 @@ class DxfPhotoEditor {
             this.saveTextInput();
         });
         
-        // 컨텍스트 메뉴 외부 클릭 시 닫기
-        document.addEventListener('click', (e) => {
+        // 컨텍스트 메뉴 외부 클릭/터치 시 닫기
+        const handleOutsideClick = (e) => {
             const contextMenu = document.getElementById('context-menu');
-            // 컨텍스트 메뉴 자체를 클릭한 게 아니면 닫기
-            if (!contextMenu.contains(e.target)) {
+            // 컨텍스트 메뉴가 표시되어 있고, 메뉴 자체를 클릭한 게 아니면 닫기
+            if (contextMenu.classList.contains('active') && !contextMenu.contains(e.target)) {
                 this.hideContextMenu();
             }
-        });
+        };
+        document.addEventListener('click', handleOutsideClick);
+        document.addEventListener('touchend', handleOutsideClick);
         
         // 사진 보기 모달 이벤트
         document.getElementById('close-photo-view').addEventListener('click', () => {
@@ -1942,6 +1963,20 @@ class DxfPhotoEditor {
         
         if (touches.length === 0) {
             // 모든 터치 종료
+            
+            // 컨텍스트 메뉴가 열려있고, 드래그하지 않았고, 롱프레스가 아니면 메뉴 닫기
+            const contextMenu = document.getElementById('context-menu');
+            if (contextMenu.classList.contains('active') && 
+                !this.touchState.isDragging && 
+                !this.isLongPress) {
+                
+                // 메뉴 버튼을 터치한 게 아닌지 확인
+                const touch = e.changedTouches[0];
+                const target = document.elementFromPoint(touch.clientX, touch.clientY);
+                if (!contextMenu.contains(target)) {
+                    this.hideContextMenu();
+                }
+            }
             
             // 롱프레스 확인
             if (!this.isLongPress) {
