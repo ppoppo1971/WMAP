@@ -21,12 +21,75 @@ class GoogleDriveManager {
         
         // 액세스 토큰
         this.accessToken = null;
+        this.tokenExpiry = null;
         
         // Token Client
         this.tokenClient = null;
         
         // 초기화 완료 여부
         this.initialized = false;
+        
+        // localStorage 키
+        this.STORAGE_KEY_TOKEN = 'google_drive_access_token';
+        this.STORAGE_KEY_EXPIRY = 'google_drive_token_expiry';
+    }
+
+    /**
+     * localStorage에 토큰 저장
+     */
+    saveTokenToStorage(token, expiresIn = 3600) {
+        try {
+            const expiry = Date.now() + (expiresIn * 1000); // 초 단위를 밀리초로 변환
+            localStorage.setItem(this.STORAGE_KEY_TOKEN, token);
+            localStorage.setItem(this.STORAGE_KEY_EXPIRY, expiry.toString());
+            console.log('💾 토큰이 localStorage에 저장되었습니다');
+        } catch (error) {
+            console.error('❌ 토큰 저장 실패:', error);
+        }
+    }
+
+    /**
+     * localStorage에서 토큰 복원
+     */
+    loadTokenFromStorage() {
+        try {
+            const token = localStorage.getItem(this.STORAGE_KEY_TOKEN);
+            const expiry = localStorage.getItem(this.STORAGE_KEY_EXPIRY);
+            
+            if (!token || !expiry) {
+                console.log('📭 저장된 토큰이 없습니다');
+                return false;
+            }
+            
+            // 토큰 만료 확인
+            if (Date.now() > parseInt(expiry)) {
+                console.log('⏰ 토큰이 만료되었습니다');
+                this.clearTokenFromStorage();
+                return false;
+            }
+            
+            this.accessToken = token;
+            this.tokenExpiry = parseInt(expiry);
+            this.initialized = true;
+            console.log('✅ 저장된 토큰을 복원했습니다');
+            return true;
+        } catch (error) {
+            console.error('❌ 토큰 복원 실패:', error);
+            return false;
+        }
+    }
+
+    /**
+     * localStorage에서 토큰 삭제
+     */
+    clearTokenFromStorage() {
+        try {
+            localStorage.removeItem(this.STORAGE_KEY_TOKEN);
+            localStorage.removeItem(this.STORAGE_KEY_EXPIRY);
+            console.log('🗑️ 저장된 토큰을 삭제했습니다');
+        } catch (error) {
+            console.error('❌ 토큰 삭제 실패:', error);
+        }
     }
 
     /**
@@ -35,6 +98,12 @@ class GoogleDriveManager {
     async initialize() {
         return new Promise((resolve) => {
             console.log('🔑 Google Identity Services 초기화 중...');
+            
+            // 먼저 저장된 토큰 복원 시도
+            const tokenRestored = this.loadTokenFromStorage();
+            if (tokenRestored) {
+                console.log('🔄 이전 로그인 세션을 복원했습니다');
+            }
             
             // GIS 라이브러리가 로드될 때까지 대기
             const checkGIS = setInterval(() => {
@@ -51,6 +120,11 @@ class GoogleDriveManager {
                             if (response.access_token) {
                                 this.accessToken = response.access_token;
                                 this.initialized = true;
+                                
+                                // 토큰을 localStorage에 저장
+                                const expiresIn = response.expires_in || 3600; // 기본 1시간
+                                this.saveTokenToStorage(response.access_token, expiresIn);
+                                
                                 console.log('✅ Google Drive 인증 성공');
                             }
                         },
@@ -84,6 +158,11 @@ class GoogleDriveManager {
                 
                 this.accessToken = response.access_token;
                 this.initialized = true;
+                
+                // 토큰을 localStorage에 저장
+                const expiresIn = response.expires_in || 3600; // 기본 1시간
+                this.saveTokenToStorage(response.access_token, expiresIn);
+                
                 console.log('✅ 인증 완료');
                 resolve(this.accessToken);
             };

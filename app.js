@@ -423,7 +423,7 @@ class DxfPhotoEditor {
         // 슬라이딩 메뉴 - 목록으로 돌아가기
         const menuBackBtn = document.getElementById('menu-back-to-list');
         const menuFitViewBtn = document.getElementById('menu-fit-view');
-        const menuClearCacheBtn = document.getElementById('menu-clear-cache');
+        const menuLogoutBtn = document.getElementById('menu-logout');
         
         menuBackBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -438,14 +438,14 @@ class DxfPhotoEditor {
             this.redraw();
         });
         
-        menuClearCacheBtn.addEventListener('click', async (e) => {
+        menuLogoutBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             this.closeSlideMenu();
-            await this.clearCacheAndReload();
+            await this.logout();
         });
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuClearCacheBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuLogoutBtn].forEach(btn => {
             btn.addEventListener('touchstart', (e) => {
                 e.stopPropagation();
             }, { passive: false });
@@ -1060,14 +1060,30 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 캐시 삭제 및 현재 도면 새로고침
+     * 로그아웃 (로그인 토큰 삭제 및 페이지 새로고침)
      */
-    async clearCacheAndReload() {
+    async logout() {
         try {
-            console.log('🗑️ 캐시 삭제 시작...');
+            console.log('🚪 로그아웃 시작...');
+            
+            const confirmed = confirm('로그아웃 하시겠습니까?\n\n저장되지 않은 변경사항은 손실됩니다.\n페이지가 새로고침되어 최신 코드가 로드됩니다.');
+            
+            if (!confirmed) {
+                console.log('❌ 로그아웃 취소됨');
+                return;
+            }
+            
             this.showLoading(true);
             
-            // Service Worker 캐시 삭제
+            // Google Drive 토큰 삭제
+            if (window.driveManager) {
+                window.driveManager.clearTokenFromStorage();
+                window.driveManager.accessToken = null;
+                window.driveManager.initialized = false;
+                console.log('✅ Google Drive 토큰 삭제됨');
+            }
+            
+            // Service Worker 캐시 삭제 (깃허브 최신 코드 로드를 위해)
             if ('caches' in window) {
                 const cacheNames = await caches.keys();
                 console.log(`📦 발견된 캐시: ${cacheNames.length}개`);
@@ -1078,46 +1094,14 @@ class DxfPhotoEditor {
                 }
             }
             
-            // 현재 도면 정보 저장
-            const currentDxfData = this.dxfData;
-            const currentPhotos = [...this.photos];
-            const currentViewBox = {...this.viewBox};
-            const currentFileName = this.currentFileName;
-            const currentFileId = this.currentFileId;
+            console.log('✅ 로그아웃 완료 - 페이지를 새로고침합니다');
             
-            console.log('💾 현재 도면 상태 저장 완료');
-            console.log(`  - 파일명: ${currentFileName}`);
-            console.log(`  - 사진 개수: ${currentPhotos.length}`);
-            
-            // 잠시 대기 (캐시 삭제 완료 확인)
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            // 현재 도면 다시 로드
-            if (currentDxfData) {
-                console.log('🔄 도면 새로고침 중...');
-                
-                // 도면 정보 복원
-                this.dxfData = currentDxfData;
-                this.photos = currentPhotos;
-                this.viewBox = currentViewBox;
-                this.currentFileName = currentFileName;
-                this.currentFileId = currentFileId;
-                
-                // 화면 다시 그리기
-                this.redraw();
-                
-                console.log('✅ 캐시 삭제 및 새로고침 완료');
-                alert('캐시가 삭제되었습니다.');
-            } else {
-                console.log('⚠️ 현재 열린 도면이 없습니다.');
-                alert('캐시가 삭제되었습니다.');
-            }
-            
-            this.showLoading(false);
+            // 페이지 새로고침 (깃허브 최신 코드 로드)
+            window.location.reload(true);
             
         } catch (error) {
-            console.error('❌ 캐시 삭제 실패:', error);
-            alert('캐시 삭제 중 오류가 발생했습니다.');
+            console.error('❌ 로그아웃 실패:', error);
+            this.showToast('⚠️ 로그아웃 중 오류 발생');
             this.showLoading(false);
         }
     }
@@ -3301,13 +3285,38 @@ async function startApp() {
     
     if (window.driveManager) {
         console.log('✅ Google Drive Manager 준비됨');
+        
+        // 저장된 토큰이 있으면 자동으로 파일 목록 로드
+        if (window.driveManager.accessToken && window.driveManager.initialized) {
+            console.log('🔄 저장된 로그인 세션 발견 - 자동 로그인 중...');
+            
+            // 앱 인스턴스 먼저 생성
+            app = new DxfPhotoEditor();
+            console.log('✅ DXF Photo Editor 초기화 완료');
+            
+            // 파일 목록 자동 로드
+            try {
+                await app.loadFileList();
+                console.log('✅ 파일 목록 자동 로드 완료');
+            } catch (error) {
+                console.error('❌ 파일 목록 자동 로드 실패:', error);
+                // 토큰이 유효하지 않으면 삭제
+                window.driveManager.clearTokenFromStorage();
+                window.driveManager.accessToken = null;
+                window.driveManager.initialized = false;
+                console.log('⚠️ 토큰이 유효하지 않습니다. 다시 로그인해주세요.');
+            }
+        } else {
+            // 저장된 토큰이 없으면 일반 초기화
+            app = new DxfPhotoEditor();
+            console.log('✅ DXF Photo Editor 초기화 완료');
+        }
     } else {
         console.warn('⚠️ Google Drive Manager 초기화 대기 시간 초과');
+        // Google Drive 없이도 앱은 시작
+        app = new DxfPhotoEditor();
+        console.log('✅ DXF Photo Editor 초기화 완료 (오프라인 모드)');
     }
-    
-    // 앱 인스턴스 생성
-    app = new DxfPhotoEditor();
-    console.log('✅ DXF Photo Editor 초기화 완료');
 }
 
 document.addEventListener('DOMContentLoaded', startApp);
