@@ -282,26 +282,8 @@ class DxfPhotoEditor {
             return { x: 0, y: 0 };
         }
 
-        if (this.svg && this.svg.createSVGPoint && this.svg.getScreenCTM) {
-            try {
-                const point = this.svg.createSVGPoint();
-                point.x = x;
-                point.y = -y;
-                const ctm = this.svg.getScreenCTM();
-                if (ctm && typeof ctm.matrixTransform === 'function') {
-                    const screenPoint = point.matrixTransform(ctm);
-                    return {
-                        x: screenPoint.x - rect.left,
-                        y: screenPoint.y - rect.top
-                    };
-                }
-            } catch (error) {
-                console.warn('⚠️ viewToCanvasCoords 변환 실패, fallback 사용:', error);
-            }
-        }
-
         const normX = ((x - this.viewBox.x) / this.viewBox.width) * rect.width;
-        const normY = (((-y) - this.viewBox.y) / this.viewBox.height) * rect.height;
+        const normY = ((y - this.viewBox.y) / this.viewBox.height) * rect.height;
         return { x: normX, y: normY };
     }
 
@@ -2778,23 +2760,12 @@ class DxfPhotoEditor {
             
             // 단일 터치: 팬(드래그) - 손가락 방향과 일치
             if (this.touchState.isDragging && this.touchState.lastTouch) {
-                // 픽셀 이동량 (손가락 이동)
-                const deltaX = touch.clientX - this.touchState.lastTouch.x;
-                const deltaY = touch.clientY - this.touchState.lastTouch.y;
+                // 현재/이전 터치 지점을 ViewBox 좌표로 변환
+                const currentView = this.screenToViewBox(touch.clientX, touch.clientY);
+                const lastView = this.screenToViewBox(this.touchState.lastTouch.x, this.touchState.lastTouch.y);
                 
-                // 픽셀을 ViewBox 좌표로 변환
-                const rect = this.getCachedRect();
-                
-                // 손가락 방향 = 도면 이동 방향 (ViewBox는 반대 방향으로 이동)
-                // 손가락을 오른쪽으로 → 도면도 오른쪽으로 → viewBox.x 감소
-                // 손가락을 아래로 → 도면도 아래로 → viewBox.y 감소 (DXF Y축 반전 때문)
-                const viewDeltaX = -(deltaX / rect.width) * this.viewBox.width;
-                const viewDeltaY = -(deltaY / rect.height) * this.viewBox.height;  // Y도 음수
-                
-                // 디버깅 (큰 움직임만 로그)
-                if (Math.abs(deltaX) > 5 || Math.abs(deltaY) > 5) {
-                    console.log(`👆 드래그: 손가락(${deltaX.toFixed(0)}, ${deltaY.toFixed(0)}) → ViewDelta(${viewDeltaX.toFixed(1)}, ${viewDeltaY.toFixed(1)})`);
-                }
+                const viewDeltaX = (lastView.x - currentView.x) * this.panSensitivity;
+                const viewDeltaY = (lastView.y - currentView.y) * this.panSensitivity;
                 
                 // ViewBox 이동
                 this.viewBox.x += viewDeltaX;
