@@ -59,6 +59,7 @@ class DxfPhotoEditor {
         this.longPressDuration = 350; // 0.35초 (약간 빠르게)
         this.longPressPosition = { x: 0, y: 0 };
         this.isLongPress = false;
+        this.longPressTriggered = false;
         
         // 더블탭 관련
         this.lastTapTime = 0;
@@ -66,6 +67,7 @@ class DxfPhotoEditor {
         this.doubleTapDelay = 300; // 300ms 이내 두 번 탭
         this.doubleTapDistance = 50; // 50px 이내 같은 위치
         this.tapMoveThreshold = 15; // 탭으로 인정할 최대 이동 거리 (px)
+        this.lastTouchTime = 0;
         
         // 텍스트 관련
         this.texts = []; // { id, x, y, text, fontSize }
@@ -303,11 +305,9 @@ class DxfPhotoEditor {
             Math.pow(clientY - this.lastTapPosition.y, 2)
         );
         
-        console.log(`👆 탭: timeDiff=${timeDiff}ms, distance=${distance.toFixed(0)}px`);
+        const isDoubleTap = timeDiff < this.doubleTapDelay && distance < this.doubleTapDistance;
         
-        // 더블탭 감지 (300ms 이내, 50px 이내)
-        if (timeDiff < this.doubleTapDelay && distance < this.doubleTapDistance) {
-            // 더블탭 확인!
+        if (isDoubleTap) {
             console.log('🎯🎯 더블탭 감지! 줌 실행...');
             
             // 탭한 위치를 ViewBox 좌표로 변환
@@ -315,21 +315,19 @@ class DxfPhotoEditor {
             const tapX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
             const tapY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
             
-            console.log(`   → 탭 위치: 스크린(${clientX}, ${clientY}), ViewBox(${tapX.toFixed(0)}, ${tapY.toFixed(0)})`);
-            
-            // 해당 위치로 줌인 (2배 확대)
             this.zoomToPoint(tapX, tapY, 2.0);
             
             // 더블탭 정보 초기화 (연속 더블탭 방지)
             this.lastTapTime = 0;
             this.lastTapPosition = { x: 0, y: 0 };
             
-        } else {
-            // 첫 번째 탭 기록
-            console.log('   → 첫 번째 탭 기록');
-            this.lastTapTime = now;
-            this.lastTapPosition = { x: clientX, y: clientY };
+            return true;
         }
+        
+        // 첫 번째 탭 기록
+        this.lastTapTime = now;
+        this.lastTapPosition = { x: clientX, y: clientY };
+        return false;
     }
     
     /**
@@ -724,6 +722,8 @@ class DxfPhotoEditor {
     startLongPress(clientX, clientY) {
         // 기존 타이머 취소
         this.cancelLongPress();
+        this.longPressTriggered = false;
+        this.isLongPress = false;
         
         // 스크린 좌표 저장
         this.longPressPosition.screenX = clientX;
@@ -751,6 +751,8 @@ class DxfPhotoEditor {
             clearTimeout(this.longPressTimer);
             this.longPressTimer = null;
         }
+        this.longPressTriggered = false;
+        this.isLongPress = false;
     }
     
     /**
@@ -760,6 +762,7 @@ class DxfPhotoEditor {
         console.log('🔔 롱프레스 감지!', this.longPressPosition);
         
         this.isLongPress = true;
+        this.longPressTriggered = true;
         this.longPressTimer = null;
         
         // 햅틱 피드백 (지원하는 경우)
@@ -2669,6 +2672,8 @@ class DxfPhotoEditor {
     onTouchStart(e) {
         // 기본 브라우저 동작 방지 (페이지 확대/축소 방지)
         e.preventDefault();
+        this.lastTouchTime = Date.now();
+        this.longPressTriggered = false;
         
         const touches = e.touches;
         
@@ -2838,24 +2843,23 @@ class DxfPhotoEditor {
             }
             
             // 사진 클릭 또는 더블탭 감지
-            if (!this.isLongPress && e.changedTouches.length > 0) {
+            if (!this.longPressTriggered && e.changedTouches.length > 0) {
                 const touch = e.changedTouches[0];
                 const isTap = this.isTapGesture(touch);
-                let photoClicked = false;
                 
                 if (isTap) {
-                    photoClicked = this.checkPhotoClick(touch.clientX, touch.clientY);
-                }
-                
-                if (isTap && !photoClicked) {
-                    this.handleDoubleTap(touch.clientX, touch.clientY);
+                    const doubled = this.handleDoubleTap(touch.clientX, touch.clientY);
+                    if (!doubled) {
+                        this.checkPhotoClick(touch.clientX, touch.clientY);
+                    }
                 }
             }
             
             // 롱프레스 확인
-            if (!this.isLongPress) {
+            if (!this.longPressTriggered) {
                 this.cancelLongPress();
             } else {
+                this.longPressTriggered = false;
                 this.isLongPress = false;
             }
             
@@ -3008,6 +3012,9 @@ class DxfPhotoEditor {
      * SVG 클릭 이벤트에서 호출됨
      */
     onCanvasClick(e) {
+        if (Date.now() - this.lastTouchTime < 400) {
+            return;
+        }
         // 드래그 중이거나 방금 드래그가 끝났으면 클릭으로 처리하지 않음
         if (this.touchState.isDragging || this.touchState.wasDragging) {
             return;
@@ -3056,6 +3063,7 @@ class DxfPhotoEditor {
             this.photoMemoInput.disabled = true;
             this.photoMemoInput.value = '';
         }
+        this.selectedPhotoId = null;
     }
     
     /**
