@@ -24,6 +24,7 @@ class DxfPhotoEditor {
         this.ctx = this.canvas.getContext('2d');
         this.svg = document.getElementById('svg');
         this.container = document.getElementById('canvas-container');
+        this.photoMemoInput = document.getElementById('photo-memo-input');
         
         // SVG 그룹 요소 생성
         this.svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -679,25 +680,16 @@ class DxfPhotoEditor {
             console.warn('⚠️ close-photo-view 버튼을 찾을 수 없습니다');
         }
         
-        const editPhotoMemoBtn = document.getElementById('edit-photo-memo-btn');
-        if (editPhotoMemoBtn) {
-            editPhotoMemoBtn.addEventListener('click', () => {
-                this.closePhotoViewModal();
-                this.openMemoModal(this.selectedPhotoId);
-            });
-        } else {
-            console.warn('⚠️ edit-photo-memo-btn 버튼을 찾을 수 없습니다');
-        }
-        
         const deletePhotoViewBtn = document.getElementById('delete-photo-btn');
         if (deletePhotoViewBtn) {
             deletePhotoViewBtn.addEventListener('click', () => {
-                this.closePhotoViewModal();
                 this.deletePhoto();
             });
         } else {
             console.warn('⚠️ delete-photo-btn 버튼을 찾을 수 없습니다 (사진 보기 모달)');
         }
+
+        this.setupPhotoMemoInlineEditing();
 
     }
     
@@ -1228,6 +1220,43 @@ class DxfPhotoEditor {
         if (!btn) return;
         btn.textContent = isLoggedIn ? '✅ 로그인됨' : '🔐 Google Drive';
         btn.style.background = isLoggedIn ? '#34C759' : '#4285F4';
+    }
+
+    setupPhotoMemoInlineEditing() {
+        if (!this.photoMemoInput) {
+            console.warn('⚠️ photo-memo-input 요소를 찾을 수 없습니다');
+            return;
+        }
+
+        this.photoMemoInput.addEventListener('input', () => {
+            if (!this.selectedPhotoId) return;
+            const photo = this.photos.find(p => p.id === this.selectedPhotoId);
+            if (!photo) return;
+            photo.memo = this.photoMemoInput.value;
+            this.metadataDirty = true;
+        });
+
+        this.photoMemoInput.addEventListener('blur', () => {
+            this.saveInlineMemo();
+        });
+    }
+
+    saveInlineMemo() {
+        if (!this.photoMemoInput || !this.selectedPhotoId) return;
+
+        const photo = this.photos.find(p => p.id === this.selectedPhotoId);
+        if (!photo) return;
+
+        const newMemo = this.photoMemoInput.value || '';
+        if (photo.memo !== newMemo) {
+            photo.memo = newMemo;
+            this.metadataDirty = true;
+            this.redraw();
+        }
+
+        if (this.metadataDirty) {
+            this.autoSave();
+        }
     }
 
     /**
@@ -3000,9 +3029,14 @@ class DxfPhotoEditor {
         // 사진 표시
         document.getElementById('photo-view-image').src = photo.imageData;
         
-        // 메모 표시
-        const memoDisplay = document.getElementById('photo-memo-display');
-        memoDisplay.textContent = photo.memo || '';
+        // 메모 표시 (인라인 편집)
+        if (this.photoMemoInput) {
+            this.photoMemoInput.disabled = false;
+            this.photoMemoInput.value = photo.memo || '';
+            setTimeout(() => {
+                this.photoMemoInput.focus({ preventScroll: true });
+            }, 50);
+        }
         
         // 모달 열기
         document.getElementById('photo-view-modal').classList.add('active');
@@ -3012,9 +3046,15 @@ class DxfPhotoEditor {
      * 사진 보기 모달 닫기
      */
     closePhotoViewModal() {
+        this.saveInlineMemo();
         const modal = document.getElementById('photo-view-modal');
         if (modal) {
             modal.classList.remove('active');
+        }
+        if (this.photoMemoInput) {
+            this.photoMemoInput.blur();
+            this.photoMemoInput.disabled = true;
+            this.photoMemoInput.value = '';
         }
     }
     
@@ -3062,8 +3102,14 @@ class DxfPhotoEditor {
         this.autoSave();
     }
     
-    async deletePhoto() {
-        if (!confirm('이 사진을 삭제하시겠습니까?')) return;
+    async deletePhoto(skipConfirm = false) {
+        if (!this.selectedPhotoId) return;
+        if (!skipConfirm) {
+            const confirmMessage = '이 사진과 메모를 삭제하시겠습니까?\n\n삭제 시 Google Drive 사진 파일과 메타데이터에서도 제거됩니다.';
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+        }
         
         const photoIndex = this.photos.findIndex(p => p.id === this.selectedPhotoId);
         if (photoIndex === -1) return;
@@ -3089,7 +3135,6 @@ class DxfPhotoEditor {
             console.log('   ✅ 로컬 배열에서 제거 완료');
             this.metadataDirty = true;
             
-            this.closePhotoViewModal();
             this.redraw();
             
             // 메타데이터 업데이트
@@ -3100,7 +3145,10 @@ class DxfPhotoEditor {
         } catch (error) {
             console.error('❌ 사진 삭제 실패:', error);
             this.showToast('⚠️ 삭제 실패: ' + error.message);
+            return;
         }
+
+        this.closePhotoViewModal();
     }
     
     /**

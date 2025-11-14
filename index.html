@@ -623,20 +623,18 @@
         }
 
         .photo-memo-display {
+            width: 100%;
             background: #f9f9f9;
             padding: 15px;
             border-radius: 8px;
             margin: 15px 0;
-            min-height: 50px;
+            min-height: 80px;
             font-size: 14px;
             color: #333;
-            white-space: pre-wrap;
-        }
-
-        .photo-memo-display:empty::before {
-            content: '메모가 없습니다.';
-            color: #999;
-            font-style: italic;
+            border: 1px solid #ddd;
+            resize: vertical;
+            font-family: inherit;
+            line-height: 1.5;
         }
 
         .photo-modal-buttons {
@@ -752,7 +750,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택0840</h2>
+                <h2>📁 DXF 도면 선택0902</h2>
             </div>
             
             <div class="file-list-actions">
@@ -841,11 +839,8 @@
             <div class="photo-view-container">
                 <img id="photo-view-image" class="photo-view-img">
             </div>
-            <div class="photo-memo-display" id="photo-memo-display"></div>
-            <div class="photo-modal-buttons">
-                <button class="btn" id="edit-photo-memo-btn" style="background: #34C759;">메모 편집</button>
-                <button class="btn" id="delete-photo-btn" style="background: #FF3B30;">사진 삭제</button>
-            </div>
+            <textarea class="photo-memo-display" id="photo-memo-input" placeholder="이 사진에 대한 메모를 입력하세요..." disabled></textarea>
+            <button class="btn" id="delete-photo-btn" style="background: #FF3B30; width: 100%;">사진 삭제</button>
         </div>
     </div>
 
