@@ -2390,8 +2390,8 @@ class DxfPhotoEditor {
         console.log('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
         
         this.photos.forEach((photo, index) => {
-            // ViewBox 좌표 → 스크린 좌표 변환 (DXF Y축 위로 증가 → SVG Y축 아래로 증가)
-            const { x: screenX, y: screenY } = this.viewToCanvasCoords(photo.x, -photo.y);
+            // ViewBox 좌표 → 스크린 좌표 변환
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(photo.x, photo.y);
             
             // 화면 밖에 있으면 그리지 않음
             if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
@@ -3030,8 +3030,8 @@ class DxfPhotoEditor {
         for (let i = this.photos.length - 1; i >= 0; i--) {
             const photo = this.photos[i];
             
-            // 사진 점 위치 계산 (DXF Y축 위로 증가 → SVG Y축 아래로 증가)
-            const { x: screenX, y: screenY } = this.viewToCanvasCoords(photo.x, -photo.y);
+            // 사진 점 위치 계산
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(photo.x, photo.y);
             
             // 클릭 영역 (30px - 터치하기 쉽게)
             const clickRadius = 30;
