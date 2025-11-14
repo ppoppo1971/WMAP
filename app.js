@@ -277,12 +277,38 @@ class DxfPhotoEditor {
     }
 
     viewToCanvasCoords(x, y) {
+        if (!this.svg) {
+            return { x, y };
+        }
+        
         const rect = this.getCachedRect();
+        
+        try {
+            if (this.svg.createSVGPoint && typeof this.svg.getScreenCTM === 'function') {
+                const point = this.svg.createSVGPoint();
+                point.x = x;
+                point.y = y;
+                
+                const ctm = this.svg.getScreenCTM();
+                if (ctm && typeof ctm === 'object') {
+                    const screenPoint = point.matrixTransform(ctm);
+                    if (rect) {
+                        return {
+                            x: screenPoint.x - rect.left,
+                            y: screenPoint.y - rect.top
+                        };
+                    }
+                    return { x: screenPoint.x, y: screenPoint.y };
+                }
+            }
+        } catch (error) {
+            console.warn('viewToCanvasCoords 변환 실패, 폴백 사용:', error);
+        }
+
         if (!rect) {
             return { x: 0, y: 0 };
         }
 
-        // ViewBox 좌표를 화면 픽셀 좌표로 변환 (단순 비율)
         const normX = ((x - this.viewBox.x) / this.viewBox.width) * rect.width;
         const normY = ((y - this.viewBox.y) / this.viewBox.height) * rect.height;
         return { x: normX, y: normY };
@@ -2936,31 +2962,24 @@ class DxfPhotoEditor {
             return { x: screenX, y: screenY };
         }
         
-        const target = this.svgGroup || this.svg;
-        if (target && target.ownerSVGElement && target.ownerSVGElement.createSVGPoint) {
-            try {
-                const point = target.ownerSVGElement.createSVGPoint();
-                point.x = screenX;
-                point.y = screenY;
-                
-                const ctm = target.getScreenCTM();
-                if (ctm && typeof ctm.inverse === 'function') {
-                    const inv = ctm.inverse();
-                    const svgPoint = point.matrixTransform(inv);
-                    return { x: svgPoint.x, y: svgPoint.y };
-                }
-            } catch (error) {
-                console.warn('⚠️ screenToViewBox 행렬 변환 실패, fallback 사용:', error);
-            }
+        const point = this.svg.createSVGPoint ? this.svg.createSVGPoint() : { x: screenX, y: screenY };
+        point.x = screenX;
+        point.y = screenY;
+        
+        const ctm = this.svg.getScreenCTM();
+        if (!ctm || !ctm.inverse) {
+            // 폴백: 단순 비율 변환
+            const rect = this.svg.getBoundingClientRect();
+            const normX = (screenX - rect.left) / rect.width;
+            const normY = (screenY - rect.top) / rect.height;
+            return {
+                x: this.viewBox.x + normX * this.viewBox.width,
+                y: this.viewBox.y + normY * this.viewBox.height
+            };
         }
         
-        const rect = this.svg.getBoundingClientRect();
-        const normX = (screenX - rect.left) / rect.width;
-        const normY = (screenY - rect.top) / rect.height;
-        return {
-            x: this.viewBox.x + normX * this.viewBox.width,
-            y: this.viewBox.y + normY * this.viewBox.height
-        };
+        const svgPoint = point.matrixTransform(ctm.inverse());
+        return { x: svgPoint.x, y: svgPoint.y };
     }
     
     /**
