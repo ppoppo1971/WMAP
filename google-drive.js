@@ -485,6 +485,29 @@ window.initGoogleDrive = async function() {
                 return null;
             }
         };
+
+        window.downloadFileByNameAsDataUrl = async (fileName) => {
+            try {
+                const files = await window.driveManager.listFiles();
+                const file = files.find(f => f.name === fileName);
+                
+                if (!file) {
+                    console.warn('⚠️ 파일을 찾을 수 없음:', fileName);
+                    return null;
+                }
+
+                const blob = await window.driveManager.downloadFileAsBlob(file.id);
+                return await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
+            } catch (error) {
+                console.error('❌ 파일(DataURL) 다운로드 실패:', error);
+                return null;
+            }
+        };
         
         // Google Drive에서 사진 파일 삭제
         window.deletePhotoFromDrive = async (photoFileName, options = {}) => {

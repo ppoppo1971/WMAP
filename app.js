@@ -1440,32 +1440,30 @@ class DxfPhotoEditor {
                 this.showToast('📷 사진 로딩 중...');
                 
                 for (const photoMeta of metadata.photos) {
+                    const basePhoto = {
+                        id: photoMeta.id,
+                        x: photoMeta.position?.x ?? 0,
+                        y: photoMeta.position?.y ?? 0,
+                        width: photoMeta.size?.width ?? 1,
+                        height: photoMeta.size?.height ?? 1,
+                        imageData: null,
+                        image: null,
+                        memo: photoMeta.memo || '',
+                        fileName: photoMeta.fileName,
+                        uploaded: true
+                    };
+                    
+                    this.photos.push(basePhoto);
+                    
                     try {
-                        // Google Drive에서 사진 파일 다운로드
-                        const photoContent = await window.downloadFileByName(photoMeta.fileName);
+                        const photoContent = await window.downloadFileByNameAsDataUrl(photoMeta.fileName);
                         
                         if (photoContent) {
-                            const img = new Image();
-                            await new Promise((resolve, reject) => {
-                                img.onload = resolve;
-                                img.onerror = reject;
-                                img.src = photoContent;
-                            });
-                            
-                            this.photos.push({
-                                id: photoMeta.id,
-                                x: photoMeta.position.x,
-                                y: photoMeta.position.y,
-                                width: photoMeta.size.width,
-                                height: photoMeta.size.height,
-                                imageData: photoContent,
-                                image: img,
-                                memo: photoMeta.memo || '',
-                                fileName: photoMeta.fileName,
-                                uploaded: true // 이미 업로드됨
-                            });
-                            
+                            basePhoto.imageData = photoContent;
+                            basePhoto.image = await this.loadImage(photoContent);
                             console.log('   ✓ 사진 복원:', photoMeta.fileName);
+                        } else {
+                            console.warn('   ⚠️ 사진 데이터를 가져올 수 없음:', photoMeta.fileName);
                         }
                     } catch (error) {
                         console.warn('   ⚠️ 사진 복원 실패:', photoMeta.fileName, error);
