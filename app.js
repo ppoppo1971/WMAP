@@ -1436,10 +1436,9 @@ class DxfPhotoEditor {
             
             // 사진 로드
             if (metadata.photos && metadata.photos.length > 0) {
-                console.log('📷 사진 복원 시작:', metadata.photos.length + '개');
-                this.showToast('📷 사진 로딩 중...');
+                console.log('📷 사진 메타데이터 복원:', metadata.photos.length + '개');
                 
-                for (const photoMeta of metadata.photos) {
+                metadata.photos.forEach(photoMeta => {
                     const basePhoto = {
                         id: photoMeta.id,
                         x: photoMeta.position?.x ?? 0,
@@ -1454,23 +1453,9 @@ class DxfPhotoEditor {
                     };
                     
                     this.photos.push(basePhoto);
-                    
-                    try {
-                        const photoContent = await window.downloadFileByNameAsDataUrl(photoMeta.fileName);
-                        
-                        if (photoContent) {
-                            basePhoto.imageData = photoContent;
-                            basePhoto.image = await this.loadImage(photoContent);
-                            console.log('   ✓ 사진 복원:', photoMeta.fileName);
-                        } else {
-                            console.warn('   ⚠️ 사진 데이터를 가져올 수 없음:', photoMeta.fileName);
-                        }
-                    } catch (error) {
-                        console.warn('   ⚠️ 사진 복원 실패:', photoMeta.fileName, error);
-                    }
-                }
+                });
                 
-                console.log('✅ 사진 복원 완료:', this.photos.length + '개');
+                console.log('✅ 사진 좌표 복원 완료:', this.photos.length + '개');
             }
             
             // 텍스트 로드
@@ -3072,14 +3057,46 @@ class DxfPhotoEditor {
     /**
      * 사진 보기 모달 열기
      */
-    openPhotoViewModal(photoId) {
+    async openPhotoViewModal(photoId) {
         const photo = this.photos.find(p => p.id === photoId);
         if (!photo) return;
         
         this.selectedPhotoId = photoId;
         
-        // 사진 표시
-        document.getElementById('photo-view-image').src = photo.imageData;
+        const photoImageEl = document.getElementById('photo-view-image');
+        if (photoImageEl) {
+            photoImageEl.src = '';
+        }
+        
+        let imageData = photo.imageData;
+        let fetchedTempData = false;
+        
+        if (!imageData) {
+            if (!photo.fileName) {
+                this.showToast('⚠️ 사진 파일 정보를 찾을 수 없습니다.');
+                return;
+            }
+            
+            try {
+                this.showLoading(true);
+                imageData = await window.downloadFileByNameAsDataUrl(photo.fileName);
+                fetchedTempData = !!imageData;
+            } catch (error) {
+                console.error('❌ 사진 다운로드 실패:', error);
+                this.showToast('⚠️ 사진을 불러오지 못했습니다.');
+            } finally {
+                this.showLoading(false);
+            }
+            
+            if (!imageData) {
+                return;
+            }
+        }
+        
+        if (photoImageEl) {
+            photoImageEl.src = imageData;
+        }
+        this.tempFetchedPhotoData = fetchedTempData ? imageData : null;
         
         // 메모 표시 (인라인 편집)
         if (this.photoMemoInput) {
@@ -3108,6 +3125,11 @@ class DxfPhotoEditor {
             this.photoMemoInput.disabled = true;
             this.photoMemoInput.value = '';
         }
+        const photoImageEl = document.getElementById('photo-view-image');
+        if (photoImageEl && this.tempFetchedPhotoData) {
+            photoImageEl.src = '';
+        }
+        this.tempFetchedPhotoData = null;
         this.selectedPhotoId = null;
     }
     
