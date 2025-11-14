@@ -510,8 +510,8 @@ window.initGoogleDrive = async function() {
                     console.log('   ✅ 파일 삭제 완료');
                     return true;
                 } else {
-                    console.warn('   ⚠️ 파일을 찾을 수 없음:', photoFileName);
-                    return false;
+                    console.warn('   ⚠️ 파일을 찾을 수 없음:', photoFileName, '(이미 삭제되었을 수 있음)');
+                    return true; // 이미 삭제된 것으로 판단하고 성공 처리
                 }
             } catch (error) {
                 console.error('❌ Google Drive 사진 삭제 실패:', error);
@@ -544,13 +544,13 @@ window.initGoogleDrive = async function() {
                 }
                 
                 const baseName = dxfFileName.replace(/\.dxf$/i, '');
-                const ensurePhotoFileName = (photo, index = 0) => {
+                const ensurePhotoFileName = (photo) => {
                     if (photo.fileName && typeof photo.fileName === 'string') {
                         return photo.fileName;
                     }
-                    const safeIndex = typeof index === 'number' && index >= 0 ? index : 0;
-                    const uniqueSuffix = `${Date.now()}_${safeIndex}_${Math.floor(Math.random() * 1000)}`;
-                    const fileName = `${baseName}_photo_${uniqueSuffix}.jpg`;
+                    const now = new Date();
+                    const formatted = `${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+                    const fileName = `${baseName}_photo_${formatted}.jpg`;
                     photo.fileName = fileName;
                     return fileName;
                 };
@@ -560,9 +560,9 @@ window.initGoogleDrive = async function() {
                 const allPhotos = appData.allPhotos || appData.photos;
                 const metadata = {
                     dxfFile: dxfFileName,
-                    photos: allPhotos.map((photo, index) => ({
+                    photos: allPhotos.map((photo) => ({
                         id: photo.id,
-                        fileName: ensurePhotoFileName(photo, index),
+                        fileName: ensurePhotoFileName(photo),
                         position: { x: photo.x, y: photo.y },
                         size: { width: photo.width, height: photo.height },
                         memo: photo.memo || '',
@@ -584,8 +584,8 @@ window.initGoogleDrive = async function() {
                     for (let i = 0; i < appData.photos.length; i++) {
                         const photo = appData.photos[i];
                         // allPhotos에서 이 사진의 인덱스를 찾아서 파일명 결정
-                        const photoIndex = allPhotos.findIndex(p => p.id === photo.id);
-                        const photoFileName = ensurePhotoFileName(photo, photoIndex);
+                        ensurePhotoFileName(photo);
+                        const photoFileName = photo.fileName;
                         
                         console.log(`   [${i + 1}/${appData.photos.length}] ${photoFileName} 업로드 중...`);
                         await window.driveManager.uploadImage(photoFileName, photo.imageData);
