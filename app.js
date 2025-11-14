@@ -276,6 +276,35 @@ class DxfPhotoEditor {
         return this.cachedRect;
     }
 
+    viewToCanvasCoords(x, y) {
+        const rect = this.getCachedRect();
+        if (!rect) {
+            return { x: 0, y: 0 };
+        }
+
+        if (this.svg && this.svg.createSVGPoint && this.svg.getScreenCTM) {
+            try {
+                const point = this.svg.createSVGPoint();
+                point.x = x;
+                point.y = y;
+                const ctm = this.svg.getScreenCTM();
+                if (ctm && ctm.matrixTransform) {
+                    const screenPoint = point.matrixTransform(ctm);
+                    return {
+                        x: screenPoint.x - rect.left,
+                        y: screenPoint.y - rect.top
+                    };
+                }
+            } catch (error) {
+                console.warn('⚠️ viewToCanvasCoords 변환 실패, fallback 사용:', error);
+            }
+        }
+
+        const normX = ((x - this.viewBox.x) / this.viewBox.width) * rect.width;
+        const normY = ((y - this.viewBox.y) / this.viewBox.height) * rect.height;
+        return { x: normX, y: normY };
+    }
+
     getDxfBaseName() {
         const driveName = window.currentDriveFile?.name;
         const base = driveName || (this.dxfFileName ? `${this.dxfFileName}.dxf` : 'photo');
@@ -2318,12 +2347,9 @@ class DxfPhotoEditor {
      * 텍스트 그리기 (최적화: rect 캐싱)
      */
     drawTexts() {
-        const rect = this.getCachedRect();
-        
         this.texts.forEach(textObj => {
-            // ViewBox 좌표 → 스크린 좌표 변환
-            const x = ((textObj.x - this.viewBox.x) / this.viewBox.width) * rect.width;
-            const y = ((textObj.y - this.viewBox.y) / this.viewBox.height) * rect.height;
+            const rect = this.getCachedRect();
+            const { x, y } = this.viewToCanvasCoords(textObj.x, textObj.y);
             const fontSize = (textObj.fontSize / this.viewBox.width) * rect.width;
             
             this.ctx.save();
@@ -2364,9 +2390,7 @@ class DxfPhotoEditor {
         
         this.photos.forEach((photo, index) => {
             // ViewBox 좌표 → 스크린 좌표 변환
-            // photo.x, photo.y는 ViewBox 좌표계에 고정
-            const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
-            const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(photo.x, photo.y);
             
             // 화면 밖에 있으면 그리지 않음
             if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
@@ -3010,8 +3034,7 @@ class DxfPhotoEditor {
             const photo = this.photos[i];
             
             // 사진 점 위치 계산
-            const screenX = ((photo.x - this.viewBox.x) / this.viewBox.width) * rect.width;
-            const screenY = ((photo.y - this.viewBox.y) / this.viewBox.height) * rect.height;
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(photo.x, photo.y);
             
             // 클릭 영역 (30px - 터치하기 쉽게)
             const clickRadius = 30;
