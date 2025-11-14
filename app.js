@@ -68,6 +68,8 @@ class DxfPhotoEditor {
         this.doubleTapDistance = 50; // 50px 이내 같은 위치
         this.tapMoveThreshold = 15; // 탭으로 인정할 최대 이동 거리 (px)
         this.lastTouchTime = 0;
+        this.singleTapTimeout = null;
+        this.pendingTapAction = null;
         
         // 텍스트 관련
         this.texts = []; // { id, x, y, text, fontSize }
@@ -273,6 +275,12 @@ class DxfPhotoEditor {
         
         return this.cachedRect;
     }
+
+    getDxfBaseName() {
+        const driveName = window.currentDriveFile?.name;
+        const base = driveName || (this.dxfFileName ? `${this.dxfFileName}.dxf` : 'photo');
+        return base.replace(/\.dxf$/i, '');
+    }
     
     /**
      * 현재 제스처가 탭에 해당하는지 여부
@@ -290,6 +298,30 @@ class DxfPhotoEditor {
         );
         
         return moveDistance < this.tapMoveThreshold;
+    }
+
+    queueSingleTapAction(action) {
+        if (typeof action !== 'function') return;
+        this.clearPendingSingleTap();
+        this.pendingTapAction = action;
+        this.singleTapTimeout = setTimeout(() => {
+            if (this.pendingTapAction) {
+                try {
+                    this.pendingTapAction();
+                } catch (error) {
+                    console.error('❌ 단일 탭 액션 실행 오류:', error);
+                }
+            }
+            this.clearPendingSingleTap();
+        }, this.doubleTapDelay);
+    }
+
+    clearPendingSingleTap() {
+        if (this.singleTapTimeout) {
+            clearTimeout(this.singleTapTimeout);
+            this.singleTapTimeout = null;
+        }
+        this.pendingTapAction = null;
     }
     
     /**
@@ -309,6 +341,7 @@ class DxfPhotoEditor {
         
         if (isDoubleTap) {
             console.log('🎯🎯 더블탭 감지! 줌 실행...');
+            this.clearPendingSingleTap();
             
             // 탭한 위치를 ViewBox 좌표로 변환
             const rect = this.getCachedRect();
@@ -2447,7 +2480,7 @@ class DxfPhotoEditor {
                 imageData: compressedImageData, // 압축된 이미지 사용
                 image: image,
                 memo: '',
-                fileName: file.name,
+                fileName: null,
                 uploaded: false // 업로드 상태 추적
             };
             
@@ -2674,6 +2707,7 @@ class DxfPhotoEditor {
         e.preventDefault();
         this.lastTouchTime = Date.now();
         this.longPressTriggered = false;
+        this.clearPendingSingleTap();
         
         const touches = e.touches;
         
@@ -2849,9 +2883,18 @@ class DxfPhotoEditor {
                 
                 if (isTap) {
                     const doubled = this.handleDoubleTap(touch.clientX, touch.clientY);
-                    if (!doubled) {
-                        this.checkPhotoClick(touch.clientX, touch.clientY);
+                    if (doubled) {
+                        this.clearPendingSingleTap();
+                    } else {
+                        const tappedPhoto = this.checkPhotoClick(touch.clientX, touch.clientY, { openModal: false });
+                        if (tappedPhoto) {
+                            this.queueSingleTapAction(() => this.openPhotoViewModal(tappedPhoto.id));
+                        } else {
+                            this.clearPendingSingleTap();
+                        }
                     }
+                } else {
+                    this.clearPendingSingleTap();
                 }
             }
             
@@ -2861,6 +2904,7 @@ class DxfPhotoEditor {
             } else {
                 this.longPressTriggered = false;
                 this.isLongPress = false;
+                this.clearPendingSingleTap();
             }
             
             // 드래그 중이었다면 wasDragging 플래그 설정 (클릭 이벤트 방지)
@@ -2969,7 +3013,8 @@ class DxfPhotoEditor {
      * 사진 클릭 확인 (공통 함수)
      * @returns {boolean} 사진이 클릭되었으면 true, 아니면 false
      */
-    checkPhotoClick(clientX, clientY) {
+    checkPhotoClick(clientX, clientY, options = {}) {
+        const { openModal = true } = options;
         // 최적화: rect 한 번만 가져오기
         const rect = this.getCachedRect();
         const clickX = clientX - rect.left;
@@ -2997,14 +3042,16 @@ class DxfPhotoEditor {
             console.log(`   사진 ${i}: 거리=${distance.toFixed(1)}px, 기준=${clickRadius}px`);
             
             if (distance <= clickRadius) {
-                console.log(`✅ 사진 ${photo.id} 클릭됨!`);
-                this.openPhotoViewModal(photo.id);
-                return true;
+                console.log(`✅ 사진 ${photo.id} 클릭 감지 (openModal=${openModal})`);
+                if (openModal) {
+                    this.openPhotoViewModal(photo.id);
+                }
+                return photo;
             }
         }
         
         console.log('   → 사진이 클릭되지 않음');
-        return false;
+        return null;
     }
 
     /**
@@ -3021,7 +3068,7 @@ class DxfPhotoEditor {
         }
         
         // 사진 클릭 확인
-        this.checkPhotoClick(e.clientX, e.clientY);
+        this.checkPhotoClick(e.clientX, e.clientY, { openModal: true });
     }
     
     /**
@@ -3127,11 +3174,10 @@ class DxfPhotoEditor {
         
         try {
             // Google Drive에서 사진 파일 삭제
-            if (window.currentDriveFile && window.deletePhotoFromDrive) {
+            if (window.currentDriveFile && window.deletePhotoFromDrive && photoToDelete.uploaded) {
                 this.showToast('🗑️ 삭제 중...');
-                const dxfFileName = window.currentDriveFile.name;
-                // 순번 기반 파일명
-                const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photoIndex + 1}.jpg`;
+                const baseName = this.getDxfBaseName();
+                const photoFileName = photoToDelete.fileName || `${baseName}_photo_${photoIndex + 1}.jpg`;
                 
                 console.log('   Google Drive에서 삭제:', photoFileName);
                 await window.deletePhotoFromDrive(photoFileName);

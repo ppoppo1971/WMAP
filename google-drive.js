@@ -543,6 +543,18 @@ window.initGoogleDrive = async function() {
                     throw new Error('Google Drive 로그인이 필요합니다');
                 }
                 
+                const baseName = dxfFileName.replace(/\.dxf$/i, '');
+                const ensurePhotoFileName = (photo, index = 0) => {
+                    if (photo.fileName && typeof photo.fileName === 'string') {
+                        return photo.fileName;
+                    }
+                    const safeIndex = typeof index === 'number' && index >= 0 ? index : 0;
+                    const uniqueSuffix = `${Date.now()}_${safeIndex}_${Math.floor(Math.random() * 1000)}`;
+                    const fileName = `${baseName}_photo_${uniqueSuffix}.jpg`;
+                    photo.fileName = fileName;
+                    return fileName;
+                };
+                
                 // 1. 메타데이터 저장 (전체 사진 목록 사용)
                 console.log('📝 메타데이터 생성 중...');
                 const allPhotos = appData.allPhotos || appData.photos;
@@ -550,7 +562,7 @@ window.initGoogleDrive = async function() {
                     dxfFile: dxfFileName,
                     photos: allPhotos.map((photo, index) => ({
                         id: photo.id,
-                        fileName: `${dxfFileName.replace('.dxf', '')}_photo_${index + 1}.jpg`,
+                        fileName: ensurePhotoFileName(photo, index),
                         position: { x: photo.x, y: photo.y },
                         size: { width: photo.width, height: photo.height },
                         memo: photo.memo || '',
@@ -571,13 +583,15 @@ window.initGoogleDrive = async function() {
                     
                     for (let i = 0; i < appData.photos.length; i++) {
                         const photo = appData.photos[i];
-                        // allPhotos에서 이 사진의 인덱스를 찾아서 순번 결정
+                        // allPhotos에서 이 사진의 인덱스를 찾아서 파일명 결정
                         const photoIndex = allPhotos.findIndex(p => p.id === photo.id);
-                        const photoFileName = `${dxfFileName.replace('.dxf', '')}_photo_${photoIndex + 1}.jpg`;
+                        const photoFileName = ensurePhotoFileName(photo, photoIndex);
                         
                         console.log(`   [${i + 1}/${appData.photos.length}] ${photoFileName} 업로드 중...`);
                         await window.driveManager.uploadImage(photoFileName, photo.imageData);
                         console.log(`   ✅ ${photoFileName} 업로드 완료`);
+                        photo.fileName = photoFileName;
+                        photo.uploaded = true;
                     }
                     console.log('✅ 모든 사진 업로드 완료');
                 } else {
