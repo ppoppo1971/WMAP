@@ -282,25 +282,7 @@ class DxfPhotoEditor {
             return { x: 0, y: 0 };
         }
 
-        const target = this.svgGroup || this.svg;
-        if (target && target.ownerSVGElement && target.ownerSVGElement.createSVGPoint) {
-            try {
-                const point = target.ownerSVGElement.createSVGPoint();
-                point.x = x;
-                point.y = y;
-                const ctm = target.getScreenCTM();
-                if (ctm && typeof ctm.matrixTransform === 'function') {
-                    const screenPoint = point.matrixTransform(ctm);
-                    return {
-                        x: screenPoint.x - rect.left,
-                        y: screenPoint.y - rect.top
-                    };
-                }
-            } catch (error) {
-                console.warn('⚠️ viewToCanvasCoords 행렬 변환 실패, fallback 사용:', error);
-            }
-        }
-
+        // ViewBox 좌표를 화면 픽셀 좌표로 변환 (단순 비율)
         const normX = ((x - this.viewBox.x) / this.viewBox.width) * rect.width;
         const normY = ((y - this.viewBox.y) / this.viewBox.height) * rect.height;
         return { x: normX, y: normY };
