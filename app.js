@@ -286,9 +286,9 @@ class DxfPhotoEditor {
             try {
                 const point = this.svg.createSVGPoint();
                 point.x = x;
-                point.y = y;
+                point.y = -y;
                 const ctm = this.svg.getScreenCTM();
-                if (ctm && ctm.matrixTransform) {
+                if (ctm && typeof ctm.matrixTransform === 'function') {
                     const screenPoint = point.matrixTransform(ctm);
                     return {
                         x: screenPoint.x - rect.left,
@@ -301,7 +301,7 @@ class DxfPhotoEditor {
         }
 
         const normX = ((x - this.viewBox.x) / this.viewBox.width) * rect.width;
-        const normY = ((y - this.viewBox.y) / this.viewBox.height) * rect.height;
+        const normY = (((-y) - this.viewBox.y) / this.viewBox.height) * rect.height;
         return { x: normX, y: normY };
     }
 
