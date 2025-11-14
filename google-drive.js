@@ -545,6 +545,9 @@ window.initGoogleDrive = async function() {
                         return window.deletePhotoFromDrive(photoFileName, { retrying: true });
                     }
                 }
+                if (isAuthError(error)) {
+                    showToast('로그인이 만료되었습니다. Google Drive 버튼을 눌러 다시 로그인하세요.');
+                }
                 throw error;
             }
         };

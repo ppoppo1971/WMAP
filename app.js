@@ -3270,9 +3270,11 @@ class DxfPhotoEditor {
                 const success = await window.saveToDrive(appData, window.currentDriveFile.name);
                 
                 if (success) {
-                    // 업로드 성공 시 모든 사진을 uploaded: true로 표시
+                    // 업로드 성공 시 모든 사진을 uploaded: true로 표시하고 메모리 해제
                     newPhotos.forEach(photo => {
                         photo.uploaded = true;
+                        photo.imageData = null;
+                        photo.image = null;
                     });
                     this.metadataDirty = false;
                     console.log('✅ 자동 저장 완료');
@@ -3286,6 +3288,9 @@ class DxfPhotoEditor {
             }
         } catch (error) {
             console.error('❌ 자동 저장 오류:', error);
+            if (error && /로그인/.test(error.message || '')) {
+                this.showToast('로그인이 만료되었습니다. Google Drive 버튼으로 다시 로그인하세요.');
+            }
             this.showToast(`⚠️ 저장 실패: ${error.message}`);
         }
     }
