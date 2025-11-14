@@ -282,12 +282,13 @@ class DxfPhotoEditor {
             return { x: 0, y: 0 };
         }
 
-        if (this.svg && this.svg.createSVGPoint && this.svg.getScreenCTM) {
+        const target = this.svgGroup || this.svg;
+        if (target && target.ownerSVGElement && target.ownerSVGElement.createSVGPoint) {
             try {
-                const point = this.svg.createSVGPoint();
+                const point = target.ownerSVGElement.createSVGPoint();
                 point.x = x;
                 point.y = y;
-                const ctm = this.svg.getScreenCTM();
+                const ctm = target.getScreenCTM();
                 if (ctm && typeof ctm.matrixTransform === 'function') {
                     const screenPoint = point.matrixTransform(ctm);
                     return {
@@ -2953,13 +2954,14 @@ class DxfPhotoEditor {
             return { x: screenX, y: screenY };
         }
         
-        if (this.svg.createSVGPoint && this.svg.getScreenCTM) {
+        const target = this.svgGroup || this.svg;
+        if (target && target.ownerSVGElement && target.ownerSVGElement.createSVGPoint) {
             try {
-                const point = this.svg.createSVGPoint();
+                const point = target.ownerSVGElement.createSVGPoint();
                 point.x = screenX;
                 point.y = screenY;
                 
-                const ctm = this.svg.getScreenCTM();
+                const ctm = target.getScreenCTM();
                 if (ctm && typeof ctm.inverse === 'function') {
                     const inv = ctm.inverse();
                     const svgPoint = point.matrixTransform(inv);
