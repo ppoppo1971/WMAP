@@ -554,16 +554,24 @@ class DxfPhotoEditor {
         menuConsoleBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.closeSlideMenu();
-            // vConsole 토글
-            if (window.vConsole) {
-                const vcPanel = document.querySelector('.vc-panel');
-                if (vcPanel && vcPanel.classList.contains('vc-toggle')) {
-                    // 이미 열려있으면 닫기
-                    window.vConsole.hidePanel();
-                } else {
-                    // 닫혀있으면 열기
-                    window.vConsole.showPanel();
-                }
+            
+            if (!window.vConsole) {
+                console.warn('⚠️ vConsole 인스턴스를 찾을 수 없습니다');
+                this.showToast('vConsole을 사용할 수 없습니다.');
+                return;
+            }
+
+            const panel = document.querySelector('.vc-panel');
+            const isVisible = panel && !panel.classList.contains('vc-hide');
+            const canShow = typeof window.vConsole.show === 'function';
+            const canHide = typeof window.vConsole.hide === 'function';
+
+            if (isVisible && canHide) {
+                window.vConsole.hide();
+            } else if (canShow) {
+                window.vConsole.show();
+            } else {
+                console.warn('⚠️ vConsole.show/hide 메서드를 찾을 수 없습니다');
             }
         });
         
