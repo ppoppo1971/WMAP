@@ -53,6 +53,7 @@ class DxfPhotoEditor {
         };
         
         this.selectedPhotoId = null;
+        this.selectedTextId = null; // 선택된 텍스트 ID
         
         // 사진 그룹 관리 (동일 좌표의 여러 사진)
         this.currentPhotoGroup = []; // 현재 보고 있는 좌표의 사진 ID 배열
@@ -1121,10 +1122,11 @@ class DxfPhotoEditor {
         if (modal) {
             modal.classList.remove('active');
         }
+        this.selectedTextId = null; // 초기화
     }
     
     /**
-     * 텍스트 저장
+     * 텍스트 저장 (새 추가 또는 수정)
      */
     saveTextInput() {
         const textField = document.getElementById('text-input-field');
@@ -1135,19 +1137,29 @@ class DxfPhotoEditor {
             return;
         }
         
-        // 텍스트 객체 생성
-        const textObj = {
-            id: Date.now(),
-            x: this.longPressPosition.x,
-            y: this.longPressPosition.y,
-            text: text,
-            fontSize: this.viewBox.width * 0.02 // ViewBox 크기의 2%
-        };
+        if (this.selectedTextId) {
+            // 기존 텍스트 수정
+            const textObj = this.texts.find(t => t.id === this.selectedTextId);
+            if (textObj) {
+                textObj.text = text;
+                console.log('📝 텍스트 수정:', textObj);
+            }
+            this.selectedTextId = null;
+        } else {
+            // 새 텍스트 추가
+            const textObj = {
+                id: Date.now(),
+                x: this.longPressPosition.x,
+                y: this.longPressPosition.y,
+                text: text,
+                fontSize: this.viewBox.width * 0.006 // ViewBox 크기의 0.6% (기존 2%의 30%)
+            };
+            
+            this.texts.push(textObj);
+            console.log('📝 텍스트 추가:', textObj);
+        }
         
-        this.texts.push(textObj);
         this.metadataDirty = true;
-        
-        console.log('📝 텍스트 추가:', textObj);
         
         this.hideTextInputModal();
         this.redraw();
@@ -3274,8 +3286,84 @@ class DxfPhotoEditor {
             return;
         }
         
+        // 텍스트 클릭 확인 (우선 순위 높음)
+        const clickedText = this.checkTextClick(e.clientX, e.clientY);
+        if (clickedText) {
+            return;
+        }
+        
         // 사진 클릭 확인
         this.checkPhotoClick(e.clientX, e.clientY, { openModal: true });
+    }
+    
+    /**
+     * 텍스트 클릭 확인
+     */
+    checkTextClick(clientX, clientY) {
+        const rect = this.getCachedRect();
+        const clickX = clientX - rect.left;
+        const clickY = clientY - rect.top;
+        
+        // 텍스트 클릭 확인 (역순으로 - 나중에 추가된 것이 위에)
+        for (let i = this.texts.length - 1; i >= 0; i--) {
+            const textObj = this.texts[i];
+            
+            // 텍스트 위치 계산
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(textObj.x, textObj.y);
+            const fontSize = (textObj.fontSize / this.viewBox.width) * rect.width;
+            
+            // 텍스트 크기 계산
+            this.ctx.save();
+            this.ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
+            const textWidth = this.ctx.measureText(textObj.text).width;
+            this.ctx.restore();
+            
+            // 클릭 영역 (텍스트 박스 + 여유 공간)
+            const padding = 10;
+            const left = screenX - textWidth / 2 - padding;
+            const right = screenX + textWidth / 2 + padding;
+            const top = screenY - fontSize / 2 - padding;
+            const bottom = screenY + fontSize / 2 + padding;
+            
+            // 클릭 위치가 텍스트 영역 안에 있는지 확인
+            if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) {
+                console.log('📝 텍스트 클릭:', textObj.text);
+                this.openTextEditModal(textObj.id);
+                return textObj;
+            }
+        }
+        
+        return null;
+    }
+    
+    /**
+     * 텍스트 수정 모달 열기
+     */
+    openTextEditModal(textId) {
+        const textObj = this.texts.find(t => t.id === textId);
+        if (!textObj) return;
+        
+        this.selectedTextId = textId;
+        
+        const modal = document.getElementById('text-input-modal');
+        const textField = document.getElementById('text-input-field');
+        
+        if (!modal || !textField) {
+            console.error('❌ 텍스트 모달 요소를 찾을 수 없음!');
+            return;
+        }
+        
+        // 기존 텍스트 표시
+        textField.value = textObj.text;
+        modal.classList.add('active');
+        
+        console.log('✅ 텍스트 수정 모달 표시됨:', textObj.text);
+        
+        // 포커스
+        setTimeout(() => {
+            textField.focus();
+            textField.select(); // 전체 선택
+        }, 100);
     }
     
     /**
