@@ -60,6 +60,14 @@ class DxfPhotoEditor {
         this.longPressPosition = { x: 0, y: 0 };
         this.isLongPress = false;
         this.longPressTriggered = false;
+
+        const locationHint = (window.location?.search || '') + (window.location?.hash || '');
+        this.debugMode = /debug/i.test(locationHint);
+        this.driveStateInitialized = false;
+        this.hasPromptedLocalDriveLogin = false;
+        this.localDriveRequestInProgress = false;
+        this.pendingLocalDriveSync = false;
+        this.localSourceFile = null;
         
         // 더블탭 관련
         this.lastTapTime = 0;
@@ -88,6 +96,13 @@ class DxfPhotoEditor {
         this.panSensitivity = 1.0;
         
         this.init();
+    }
+
+    debugLog(...args) {
+        if (!this.debugMode) {
+            return;
+        }
+        console.log(...args);
     }
     
     getEntityColor(entity) {
@@ -181,9 +196,9 @@ class DxfPhotoEditor {
         }
         
         // 디버깅 (처음 20개)
-        if (this.colorDebugCount < 20) {
-            console.log(`🎨 [${this.colorDebugCount}] ${entity.type} → ${color} (출처: ${source})`);
-            console.log(`   colorIndex=${entity.colorIndex}, layer="${entity.layer}"`);
+        if (this.debugMode && this.colorDebugCount < 20) {
+            this.debugLog(`🎨 [${this.colorDebugCount}] ${entity.type} → ${color} (출처: ${source})`);
+            this.debugLog(`   colorIndex=${entity.colorIndex}, layer="${entity.layer}"`);
             this.colorDebugCount++;
         }
         
@@ -408,15 +423,15 @@ class DxfPhotoEditor {
      * @param {number} zoomFactor - 확대 배율 (2.0 = 2배 확대)
      */
     zoomToPoint(targetX, targetY, zoomFactor) {
-        console.log(`🔍 zoomToPoint 시작:`);
-        console.log(`   타겟: (${targetX.toFixed(1)}, ${targetY.toFixed(1)})`);
-        console.log(`   현재 ViewBox: x=${this.viewBox.x.toFixed(1)}, y=${this.viewBox.y.toFixed(1)}, w=${this.viewBox.width.toFixed(1)}, h=${this.viewBox.height.toFixed(1)}`);
+        this.debugLog(`🔍 zoomToPoint 시작:`);
+        this.debugLog(`   타겟: (${targetX.toFixed(1)}, ${targetY.toFixed(1)})`);
+        this.debugLog(`   현재 ViewBox: x=${this.viewBox.x.toFixed(1)}, y=${this.viewBox.y.toFixed(1)}, w=${this.viewBox.width.toFixed(1)}, h=${this.viewBox.height.toFixed(1)}`);
         
         // 새로운 ViewBox 크기
         const newWidth = this.viewBox.width / zoomFactor;
         const newHeight = this.viewBox.height / zoomFactor;
         
-        console.log(`   새 크기: w=${newWidth.toFixed(1)}, h=${newHeight.toFixed(1)} (${zoomFactor}배)`);
+        this.debugLog(`   새 크기: w=${newWidth.toFixed(1)}, h=${newHeight.toFixed(1)} (${zoomFactor}배)`);
         
         // 최소/최대 크기 제한
         const minSize = (this.originalViewBox?.width || 1000) * 0.01;
@@ -431,8 +446,8 @@ class DxfPhotoEditor {
         const newX = targetX - newWidth / 2;
         const newY = targetY - newHeight / 2;
         
-        console.log(`   새 ViewBox: x=${newX.toFixed(1)}, y=${newY.toFixed(1)}`);
-        console.log(`   → 화면 중심 = (${(newX + newWidth / 2).toFixed(1)}, ${(newY + newHeight / 2).toFixed(1)})`);
+        this.debugLog(`   새 ViewBox: x=${newX.toFixed(1)}, y=${newY.toFixed(1)}`);
+        this.debugLog(`   → 화면 중심 = (${(newX + newWidth / 2).toFixed(1)}, ${(newY + newHeight / 2).toFixed(1)})`);
         
         this.viewBox = {
             x: newX,
@@ -444,7 +459,7 @@ class DxfPhotoEditor {
         // ViewBox 업데이트
         this.updateViewBox();
         
-        console.log(`✅ 줌 완료!`);
+        this.debugLog(`✅ 줌 완료!`);
     }
     
     init() {
@@ -471,7 +486,10 @@ class DxfPhotoEditor {
         updateCanvasSize();
         
         // 윈도우 크기 변경 시 재계산
-        window.addEventListener('resize', updateCanvasSize);
+        window.addEventListener('resize', () => {
+            this.cachedRect = null;
+            updateCanvasSize();
+        });
     }
     
     setupEventListeners() {
@@ -759,6 +777,22 @@ class DxfPhotoEditor {
         }
 
         this.setupPhotoMemoInlineEditing();
+
+        window.addEventListener('drive-auth-changed', (event) => {
+            const authenticated = !!event.detail?.authenticated;
+            this.setLoginButtonState(authenticated);
+            if (!this.driveStateInitialized) {
+                this.driveStateInitialized = true;
+                return;
+            }
+            if (!authenticated) {
+                this.pendingLocalDriveSync = true;
+                this.showToast('Google Drive 로그인이 만료되었습니다. 상단 버튼으로 다시 로그인하세요.');
+            } else if (this.pendingLocalDriveSync) {
+                this.pendingLocalDriveSync = false;
+                this.showToast('Google Drive와 다시 연결되었습니다.');
+            }
+        });
 
     }
     
@@ -1548,26 +1582,120 @@ class DxfPhotoEditor {
         this.showLoading(true);
         
         try {
-            // 로컬 파일을 열 때는 Google Drive 파일 정보 초기화
-            window.currentDriveFile = null;
-            console.log('📁 로컬 파일 열기 - currentDriveFile 초기화');
+            // 로컬 파일 정보 기억
+            window.currentDriveFile = {
+                id: null,
+                name: file.name,
+                source: 'local'
+            };
+            this.localSourceFile = file;
             
-            // 사진/텍스트 데이터 초기화 (로컬 파일에는 메타데이터 없음)
+            // 사진/텍스트 데이터 초기화
             this.photos = [];
             this.texts = [];
             this.metadataDirty = false;
-            console.log('   사진/텍스트 데이터 초기화');
+            this.debugLog('   사진/텍스트 데이터 초기화');
+            
+            await this.ensureDriveContextForLocalFile(file);
             
             // 1. 파일 읽기
             const text = await file.text();
             
             this._parseDxf(text, file.name);
             
+            if (window.driveManager?.isAccessTokenValid()) {
+                await this.syncLocalDxfToDrive(file);
+                await this.loadMetadataAndDisplay(file.name);
+            } else {
+                this.pendingLocalDriveSync = true;
+                this.showToast('Google Drive 로그인 후 사진/메모가 동기화됩니다.');
+            }
+            
         } catch (error) {
             console.error('DXF 파일 로드 오류:', error);
             alert('DXF 파일을 여는데 실패했습니다.');
         } finally {
             this.showLoading(false);
+        }
+    }
+    
+    async ensureDriveContextForLocalFile(file) {
+        if (!file) {
+            return;
+        }
+        
+        if (!window.driveManager) {
+            await window.initGoogleDrive?.();
+        }
+        
+        if (!window.currentDriveFile) {
+            window.currentDriveFile = {
+                id: null,
+                name: file.name,
+                source: 'local'
+            };
+        } else {
+            window.currentDriveFile.name = file.name;
+            window.currentDriveFile.source = 'local';
+        }
+        
+        if (!window.driveManager) {
+            return;
+        }
+        
+        if (window.driveManager.isAccessTokenValid()) {
+            this.setLoginButtonState(true);
+            return;
+        }
+        
+        if (this.localDriveRequestInProgress) {
+            return;
+        }
+        
+        this.localDriveRequestInProgress = true;
+        try {
+            if (!this.hasPromptedLocalDriveLogin) {
+                this.showToast('Google Drive 로그인을 진행하면 로컬 도면도 자동 저장됩니다.');
+                this.hasPromptedLocalDriveLogin = true;
+            }
+            const success = await window.authenticateGoogleDrive();
+            if (!success) {
+                this.pendingLocalDriveSync = true;
+                this.showToast('로그인 후에만 사진/메모가 Drive에 저장됩니다.');
+            } else {
+                this.setLoginButtonState(true);
+            }
+        } catch (error) {
+            console.warn('로컬 파일을 위한 Google Drive 로그인 실패:', error);
+            this.pendingLocalDriveSync = true;
+        } finally {
+            this.localDriveRequestInProgress = false;
+        }
+    }
+    
+    async syncLocalDxfToDrive(file) {
+        if (!file || !window.driveManager || !window.driveManager.isAccessTokenValid()) {
+            return;
+        }
+        
+        try {
+            const existing = await window.driveManager.findFileByName(file.name);
+            if (existing) {
+                window.currentDriveFile.id = existing.id;
+                return;
+            }
+            
+            this.showToast('☁️ 로컬 도면을 Google Drive에 업로드합니다...');
+            const uploadResult = await window.driveManager.uploadFile(
+                file.name,
+                file,
+                file.type || 'application/dxf'
+            );
+            window.currentDriveFile.id = uploadResult.id;
+            this.showToast('✅ 도면이 Google Drive에 저장되었습니다.');
+        } catch (error) {
+            console.warn('로컬 도면 업로드 실패:', error);
+            this.showToast('⚠️ 도면 업로드에 실패했습니다. 네트워크를 확인하세요.');
         }
     }
     
@@ -1861,8 +1989,7 @@ class DxfPhotoEditor {
             return;
         }
         
-        this.ctx.fillStyle = '#f5f5f5';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         
     }
     
@@ -1896,35 +2023,35 @@ class DxfPhotoEditor {
     redraw() {
         // requestAnimationFrame으로 부드러운 렌더링
         if (this.redrawPending) {
-            console.log('   ⏸️ redraw 이미 대기 중, 건너뜀');
+            this.debugLog('   ⏸️ redraw 이미 대기 중, 건너뜀');
             return;
         }
         
         this.redrawPending = true;
-        console.log('   ▶ redraw 예약됨 (requestAnimationFrame)');
+        this.debugLog('   ▶ redraw 예약됨 (requestAnimationFrame)');
         
         requestAnimationFrame(() => {
             this.redrawPending = false;
-            console.log('   🎨 redraw 실행 중...');
+            this.debugLog('   🎨 redraw 실행 중...');
             
             if (!this.dxfData) {
-                console.log('      DXF 데이터 없음 - 환영 화면 표시');
+                this.debugLog('      DXF 데이터 없음 - 환영 화면 표시');
                 this.drawWelcomeScreen();
                 this.clearCanvas();
                 return;
             }
             
             // 1. SVG로 DXF 렌더링 (벡터)
-            console.log('      1️⃣ SVG DXF 그리기...');
+            this.debugLog('      1️⃣ SVG DXF 그리기...');
             this.drawDxfSvg();
             
             // 2. Canvas로 사진 렌더링 (래스터)
-            console.log('      2️⃣ Canvas 사진/텍스트 그리기...');
-            console.log('         사진 개수:', this.photos.length);
-            console.log('         텍스트 개수:', this.texts.length);
+            this.debugLog('      2️⃣ Canvas 사진/텍스트 그리기...');
+            this.debugLog('         사진 개수:', this.photos.length);
+            this.debugLog('         텍스트 개수:', this.texts.length);
             this.drawPhotosCanvas();
             
-            console.log('   ✅ redraw 완료');
+            this.debugLog('   ✅ redraw 완료');
         });
     }
     
@@ -1944,10 +2071,11 @@ class DxfPhotoEditor {
         this.svg.setAttribute('viewBox', 
             `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.width} ${this.viewBox.height}`);
         
-        console.log('🖊️ SVG drawDxf() 시작, 엔티티:', this.dxfData.entities.length);
+        this.debugLog('🖊️ SVG drawDxf() 시작, 엔티티:', this.dxfData.entities.length);
         
         let drawnCount = 0;
         let errorCount = 0;
+        const fragment = document.createDocumentFragment();
         
         this.dxfData.entities.forEach((entity, index) => {
             try {
@@ -1958,7 +2086,7 @@ class DxfPhotoEditor {
                 
                 const element = this.createSvgElement(entity);
                 if (element) {
-                    this.svgGroup.appendChild(element);
+                    fragment.appendChild(element);
                     drawnCount++;
                 }
             } catch (error) {
@@ -1969,7 +2097,8 @@ class DxfPhotoEditor {
             }
         });
         
-        console.log(`SVG 렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
+        this.svgGroup.appendChild(fragment);
+        this.debugLog(`SVG 렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
     }
     
     createSvgElement(entity) {
@@ -2330,26 +2459,26 @@ class DxfPhotoEditor {
     }
     
     drawPhotosCanvas() {
-        console.log('         🖼️ drawPhotosCanvas 시작');
+        this.debugLog('         🖼️ drawPhotosCanvas 시작');
         // Canvas 초기화 (투명) - 한 번에 처리
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        console.log('            Canvas 초기화 완료 (크기:', this.canvas.width, 'x', this.canvas.height, ')');
+        this.debugLog('            Canvas 초기화 완료 (크기:', this.canvas.width, 'x', this.canvas.height, ')');
         
         // 사진과 텍스트가 없으면 빠르게 리턴
         if (this.photos.length === 0 && this.texts.length === 0) {
-            console.log('            사진/텍스트 없음 - 건너뜀');
+            this.debugLog('            사진/텍스트 없음 - 건너뜀');
             return;
         }
         
         // 사진 마커 그리기
-        console.log('            사진 그리기 시작 (' + this.photos.length + '개)');
+        this.debugLog('            사진 그리기 시작 (' + this.photos.length + '개)');
         this.drawPhotos();
         
         // 텍스트 그리기
-        console.log('            텍스트 그리기 시작 (' + this.texts.length + '개)');
+        this.debugLog('            텍스트 그리기 시작 (' + this.texts.length + '개)');
         this.drawTexts();
         
-        console.log('         ✅ drawPhotosCanvas 완료');
+        this.debugLog('         ✅ drawPhotosCanvas 완료');
     }
     
     /**
@@ -2395,7 +2524,7 @@ class DxfPhotoEditor {
      */
     drawPhotos() {
         const rect = this.getCachedRect();
-        console.log('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
+        this.debugLog('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
         
         this.photos.forEach((photo, index) => {
             // ViewBox 좌표 → 스크린 좌표 변환
@@ -2425,7 +2554,7 @@ class DxfPhotoEditor {
             this.ctx.restore();
         });
         
-        console.log('               ✅ drawPhotos 완료 - 총', this.photos.length, '개 그림');
+        this.debugLog('               ✅ drawPhotos 완료 - 총', this.photos.length, '개 그림');
     }
     
     /**
@@ -2434,13 +2563,13 @@ class DxfPhotoEditor {
      * @param {Object} position - {x, y} ViewBox 좌표
      */
     async addPhotoAt(file, position) {
-        console.log('====================================');
-        console.log('📷 addPhotoAt 호출됨');
-        console.log('   파일:', file);
-        console.log('   파일명:', file?.name);
-        console.log('   파일 크기:', file?.size, 'bytes');
-        console.log('   위치:', position);
-        console.log('====================================');
+        this.debugLog('====================================');
+        this.debugLog('📷 addPhotoAt 호출됨');
+        this.debugLog('   파일:', file);
+        this.debugLog('   파일명:', file?.name);
+        this.debugLog('   파일 크기:', file?.size, 'bytes');
+        this.debugLog('   위치:', position);
+        this.debugLog('====================================');
         
         if (!file) {
             console.warn('⚠️ 파일이 없습니다');
@@ -2460,25 +2589,25 @@ class DxfPhotoEditor {
             return;
         }
         
-        console.log('▶ 사진 추가 프로세스 시작:', file.name);
-        console.log('   위치:', { x: position.x, y: position.y });
+        this.debugLog('▶ 사진 추가 프로세스 시작:', file.name);
+        this.debugLog('   위치:', { x: position.x, y: position.y });
         this.showLoading(true);
         
         try {
             // 이미지 로드
-            console.log('1️⃣ 이미지 데이터 읽기 시작...');
+            this.debugLog('1️⃣ 이미지 데이터 읽기 시작...');
             const imageData = await this.readFileAsDataURL(file);
-            console.log('   ✓ 이미지 데이터 읽기 완료 (길이:', imageData?.length, ')');
+            this.debugLog('   ✓ 이미지 데이터 읽기 완료 (길이:', imageData?.length, ')');
             
-            console.log('2️⃣ 이미지 객체 생성 시작...');
+            this.debugLog('2️⃣ 이미지 객체 생성 시작...');
             const image = await this.loadImage(imageData);
-            console.log('   ✓ 이미지 로드 완료 (크기:', image.width, 'x', image.height, ')');
+            this.debugLog('   ✓ 이미지 로드 완료 (크기:', image.width, 'x', image.height, ')');
             
             // 이미지 압축 (500KB 이하로)
             this.showToast('🔄 이미지 변환 중...');
-            console.log('3️⃣ 이미지 압축 시작...');
+            this.debugLog('3️⃣ 이미지 압축 시작...');
             const compressedImageData = await this.compressImage(image, file.name, 500 * 1024); // 500KB
-            console.log('   ✓ 이미지 압축 완료 (압축 크기:', compressedImageData.length, ')');
+            this.debugLog('   ✓ 이미지 압축 완료 (압축 크기:', compressedImageData.length, ')');
             
             // 변환 완료 토스트
             this.showToast('✅ 변환 완료');
@@ -2500,7 +2629,7 @@ class DxfPhotoEditor {
                 uploaded: false // 업로드 상태 추적
             };
             
-            console.log('4️⃣ 사진 객체 생성 완료:', {
+            this.debugLog('4️⃣ 사진 객체 생성 완료:', {
                 id: photo.id,
                 x: photo.x,
                 y: photo.y,
@@ -2511,15 +2640,15 @@ class DxfPhotoEditor {
             
             this.photos.push(photo);
             this.metadataDirty = true;
-            console.log(`5️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
-            console.log('   현재 사진 목록:', this.photos.map(p => ({ id: p.id, fileName: p.fileName })));
+            this.debugLog(`5️⃣ 사진 배열에 추가됨 (총 ${this.photos.length}개)`);
+            this.debugLog('   현재 사진 목록:', this.photos.map(p => ({ id: p.id, fileName: p.fileName })));
             
-            console.log('6️⃣ 화면 다시 그리기 시작...');
+            this.debugLog('6️⃣ 화면 다시 그리기 시작...');
             this.redraw();
-            console.log('   ✓ 화면 다시 그리기 완료');
+            this.debugLog('   ✓ 화면 다시 그리기 완료');
             
             // Google Drive 자동 저장
-            console.log('7️⃣ 자동 저장 시작...');
+            this.debugLog('7️⃣ 자동 저장 시작...');
             this.showToast('☁️ 저장 중...');
             await this.autoSave();
             
@@ -2546,10 +2675,10 @@ class DxfPhotoEditor {
     
     readFileAsDataURL(file) {
         return new Promise((resolve, reject) => {
-            console.log('   📖 FileReader 시작...');
+            this.debugLog('   📖 FileReader 시작...');
             const reader = new FileReader();
             reader.onload = (e) => {
-                console.log('   ✓ FileReader 완료');
+                this.debugLog('   ✓ FileReader 완료');
                 resolve(e.target.result);
             };
             reader.onerror = (error) => {
@@ -2562,10 +2691,10 @@ class DxfPhotoEditor {
     
     loadImage(src) {
         return new Promise((resolve, reject) => {
-            console.log('   🖼️ Image 객체 생성...');
+            this.debugLog('   🖼️ Image 객체 생성...');
             const img = new Image();
             img.onload = () => {
-                console.log('   ✓ Image 로드 성공:', img.width, 'x', img.height);
+                this.debugLog('   ✓ Image 로드 성공:', img.width, 'x', img.height);
                 resolve(img);
             };
             img.onerror = (error) => {
@@ -2609,7 +2738,7 @@ class DxfPhotoEditor {
                 canvas.width = width;
                 canvas.height = height;
                 
-                console.log('   압축 캔버스 크기:', width, 'x', height);
+                this.debugLog('   압축 캔버스 크기:', width, 'x', height);
                 
                 // 이미지 그리기
                 ctx.drawImage(image, 0, 0, width, height);
@@ -2622,18 +2751,18 @@ class DxfPhotoEditor {
                 let quality = 0.9;
                 let compressedData = canvas.toDataURL('image/jpeg', quality);
                 
-                console.log(`   초기 압축 (품질 ${quality.toFixed(1)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
+                this.debugLog(`   초기 압축 (품질 ${quality.toFixed(1)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
                 
                 // 목표 크기보다 크면 품질을 낮춤
                 while (compressedData.length > targetLength && quality > 0.1) {
                     quality -= 0.1;
                     compressedData = canvas.toDataURL('image/jpeg', quality);
-                    console.log(`   재압축 (품질 ${quality.toFixed(1)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
+                    this.debugLog(`   재압축 (품질 ${quality.toFixed(1)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
                 }
                 
                 // 여전히 크면 이미지 크기를 70%로 축소하고 다시 압축
                 if (compressedData.length > targetLength) {
-                    console.log('   ⚠️ 품질 조정만으로 부족 - 이미지 크기 축소');
+                    this.debugLog('   ⚠️ 품질 조정만으로 부족 - 이미지 크기 축소');
                     width = Math.floor(width * 0.7);
                     height = Math.floor(height * 0.7);
                     canvas.width = width;
@@ -2641,11 +2770,11 @@ class DxfPhotoEditor {
                     ctx.clearRect(0, 0, width, height);
                     ctx.drawImage(image, 0, 0, width, height);
                     compressedData = canvas.toDataURL('image/jpeg', 0.7);
-                    console.log(`   크기 축소 후 재압축: ${(compressedData.length / 1024).toFixed(2)}KB`);
+                    this.debugLog(`   크기 축소 후 재압축: ${(compressedData.length / 1024).toFixed(2)}KB`);
                 }
                 
                 const finalSizeKB = (compressedData.length / 1024).toFixed(2);
-                console.log(`   ✅ 최종 압축 완료: ${finalSizeKB}KB (품질: ${quality.toFixed(1)})`);
+                this.debugLog(`   ✅ 최종 압축 완료: ${finalSizeKB}KB (품질: ${quality.toFixed(1)})`);
                 
                 resolve(compressedData);
             } catch (error) {
@@ -3025,7 +3154,7 @@ class DxfPhotoEditor {
         const clickX = clientX - rect.left;
         const clickY = clientY - rect.top;
         
-        console.log('👆 사진 클릭 확인:', { clickX, clickY });
+        this.debugLog('👆 사진 클릭 확인:', { clickX, clickY });
         
         // 사진 점 클릭 확인 (원형 영역)
         for (let i = this.photos.length - 1; i >= 0; i--) {
@@ -3043,10 +3172,10 @@ class DxfPhotoEditor {
                 Math.pow(clickY - screenY, 2)
             );
             
-            console.log(`   사진 ${i}: 거리=${distance.toFixed(1)}px, 기준=${clickRadius}px`);
+            this.debugLog(`   사진 ${i}: 거리=${distance.toFixed(1)}px, 기준=${clickRadius}px`);
             
             if (distance <= clickRadius) {
-                console.log(`✅ 사진 ${photo.id} 클릭 감지 (openModal=${openModal})`);
+                this.debugLog(`✅ 사진 ${photo.id} 클릭 감지 (openModal=${openModal})`);
                 if (openModal) {
                     this.openPhotoViewModal(photo.id);
                 }
@@ -3054,7 +3183,7 @@ class DxfPhotoEditor {
             }
         }
         
-        console.log('   → 사진이 클릭되지 않음');
+        this.debugLog('   → 사진이 클릭되지 않음');
         return null;
     }
 
@@ -3254,6 +3383,10 @@ class DxfPhotoEditor {
         console.log('💾 자동 저장 시도...');
         console.log('   saveToDrive 함수:', typeof window.saveToDrive);
         console.log('   currentDriveFile:', window.currentDriveFile);
+        
+        if (!window.currentDriveFile && this.localSourceFile) {
+            await this.ensureDriveContextForLocalFile(this.localSourceFile);
+        }
         
         if (typeof window.saveToDrive !== 'function') {
             console.error('❌ saveToDrive 함수를 찾을 수 없습니다');

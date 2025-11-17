@@ -31,6 +31,138 @@ class GoogleDriveManager {
         this.initialized = false;
     }
 
+    notifyAuthState() {
+        try {
+            window.dispatchEvent(new CustomEvent('drive-auth-changed', {
+                detail: { authenticated: this.isAccessTokenValid() }
+            }));
+        } catch (error) {
+            console.warn('⚠️ 인증 상태 이벤트 전송 실패:', error);
+        }
+    }
+
+    async requestNewToken(options = {}) {
+        if (!this.tokenClient) {
+            throw new Error('TokenClient가 초기화되지 않았습니다');
+        }
+        const { prompt = 'none' } = options;
+
+        return new Promise((resolve, reject) => {
+            this.tokenClient.callback = (response) => {
+                if (response.error) {
+                    reject(response);
+                    return;
+                }
+                this.persistToken(response.access_token, response.expires_in);
+                this.initialized = true;
+                resolve(response.access_token);
+            };
+
+            try {
+                this.tokenClient.requestAccessToken({ prompt });
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    async ensureAuthenticated(options = {}) {
+        const { allowInteractive = true, silentOnly = false, suppressLogout = false } = options;
+
+        if (this.isAccessTokenValid()) {
+            return true;
+        }
+
+        if (!this.tokenClient) {
+            throw new Error('Google Drive 로그인이 필요합니다. 페이지를 새로고침하고 다시 시도해주세요.');
+        }
+
+        const prompts = silentOnly
+            ? ['none']
+            : allowInteractive
+                ? ['none', 'consent']
+                : ['none'];
+
+        for (const prompt of prompts) {
+            try {
+                await this.requestNewToken({ prompt });
+                if (this.isAccessTokenValid()) {
+                    return true;
+                }
+            } catch (error) {
+                console.warn(`⚠️ 토큰 갱신 실패 (prompt=${prompt})`, error);
+            }
+        }
+
+        if (!suppressLogout) {
+            this.logout();
+            if (typeof showToast === 'function') {
+                showToast('Google Drive 인증이 만료되었습니다. 다시 로그인해주세요.');
+            }
+        }
+
+        throw new Error('Google Drive 인증이 필요합니다. 다시 로그인해주세요.');
+    }
+
+    isAuthStatus(status) {
+        return status === 401 || status === 403;
+    }
+
+    async forceTokenRefresh() {
+        this.clearStoredToken();
+        try {
+            await this.ensureAuthenticated({ allowInteractive: true, suppressLogout: true });
+            this.notifyAuthState();
+            return true;
+        } catch (error) {
+            console.warn('⚠️ 토큰 강제 갱신 실패:', error);
+            this.logout();
+            return false;
+        }
+    }
+
+    async handleAuthRetry({ retrying = false, retryCallback, operation = '요청' }) {
+        if (typeof retryCallback !== 'function') {
+            throw new Error(`${operation} 중 인증 오류가 발생했습니다.`);
+        }
+
+        if (!retrying) {
+            const refreshed = await this.forceTokenRefresh();
+            if (refreshed) {
+                return retryCallback(true);
+            }
+        }
+
+        throw new Error(`${operation}에 실패했습니다. Google Drive에 다시 로그인해주세요.`);
+    }
+
+    async fetchWithAuth(url, options = {}, config = {}) {
+        const { retrying = false, operation = '요청' } = config;
+        await this.ensureAuthenticated();
+
+        const headers = {
+            ...(options.headers || {}),
+            'Authorization': `Bearer ${this.accessToken}`
+        };
+
+        const mergedOptions = {
+            ...options,
+            headers
+        };
+
+        const response = await fetch(url, mergedOptions);
+
+        if (this.isAuthStatus(response.status)) {
+            return this.handleAuthRetry({
+                retrying,
+                operation,
+                retryCallback: () => this.fetchWithAuth(url, options, { ...config, retrying: true })
+            });
+        }
+
+        return response;
+    }
+
     /**
      * Google Identity Services 초기화
      */
@@ -71,30 +203,10 @@ class GoogleDriveManager {
      * 사용자 인증 요청
      */
     async authenticate() {
-        if (!this.tokenClient) {
-            throw new Error('TokenClient가 초기화되지 않았습니다');
-        }
-
-        return new Promise((resolve, reject) => {
-            console.log('🔐 인증 요청 중...');
-            
-            // 콜백 재설정 (Promise 방식으로 처리)
-            this.tokenClient.callback = (response) => {
-                if (response.error) {
-                    console.error('❌ 인증 실패:', response.error);
-                    reject(response);
-                    return;
-                }
-                
-                this.persistToken(response.access_token, response.expires_in);
-                this.initialized = true;
-                console.log('✅ 인증 완료');
-                resolve(this.accessToken);
-            };
-
-            // 인증 요청 (사용자에게 로그인 창 표시)
-            this.tokenClient.requestAccessToken({ prompt: 'consent' });
-        });
+        console.log('🔐 인증 요청 중...');
+        const token = await this.requestNewToken({ prompt: 'consent' });
+        console.log('✅ 인증 완료');
+        return token;
     }
 
     persistToken(accessToken, expiresIn = 3600) {
@@ -111,6 +223,7 @@ class GoogleDriveManager {
         } catch (error) {
             console.warn('⚠️ 토큰 저장 실패:', error);
         }
+        this.notifyAuthState();
     }
 
     restoreTokenFromStorage() {
@@ -123,12 +236,14 @@ class GoogleDriveManager {
                 this.tokenExpiresAt = parsed.expiresAt;
                 this.initialized = true;
                 console.log('🔑 저장된 토큰 복원, 만료까지', Math.round((parsed.expiresAt - Date.now()) / 1000), '초');
+                this.notifyAuthState();
                 return;
             }
         } catch (error) {
             console.warn('⚠️ 저장된 토큰 로드 실패:', error);
         }
         this.clearStoredToken();
+        this.notifyAuthState();
     }
 
     clearStoredToken() {
@@ -146,20 +261,9 @@ class GoogleDriveManager {
     }
 
     /**
-     * 액세스 토큰 확인
-     */
-    ensureAuthenticated() {
-        if (!this.isAccessTokenValid()) {
-            throw new Error('Google Drive 로그인이 필요합니다. 페이지를 새로고침하고 다시 로그인해주세요.');
-        }
-    }
-
-    /**
      * 지정된 폴더에서 모든 파일 목록 가져오기
      */
-    async listFiles() {
-        this.ensureAuthenticated();
-
+    async listFiles(options = {}) {
         console.log('📂 파일 목록 조회 중...');
         console.log('폴더 ID:', this.targetFolderId);
         console.log('액세스 토큰:', this.accessToken ? '있음 (길이: ' + this.accessToken.length + ')' : '없음');
@@ -169,10 +273,9 @@ class GoogleDriveManager {
 
         console.log('요청 URL:', url);
 
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-            },
+        const response = await this.fetchWithAuth(url, {}, {
+            operation: '파일 목록 가져오기',
+            retrying: options.retrying
         });
 
         console.log('응답 상태:', response.status, response.statusText);
@@ -210,16 +313,12 @@ class GoogleDriveManager {
      * 파일 다운로드 (텍스트)
      */
     async downloadFile(fileId) {
-        this.ensureAuthenticated();
-
         console.log('📥 파일 다운로드 중...');
 
         const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${this.apiKey}`;
 
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-            },
+        const response = await this.fetchWithAuth(url, {}, {
+            operation: '파일 다운로드'
         });
 
         if (!response.ok) {
@@ -234,16 +333,12 @@ class GoogleDriveManager {
      * 파일 다운로드 (Blob)
      */
     async downloadFileAsBlob(fileId) {
-        this.ensureAuthenticated();
-
         console.log('📥 파일 다운로드 중 (Blob)...');
 
         const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=${this.apiKey}`;
 
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-            },
+        const response = await this.fetchWithAuth(url, {}, {
+            operation: '파일 다운로드'
         });
 
         if (!response.ok) {
@@ -258,8 +353,6 @@ class GoogleDriveManager {
      * 파일 업로드 (멀티파트)
      */
     async uploadFile(fileName, content, mimeType = 'text/plain') {
-        this.ensureAuthenticated();
-
         console.log('📤 파일 업로드 중:', fileName);
 
         const metadata = {
@@ -269,15 +362,18 @@ class GoogleDriveManager {
 
         const form = new FormData();
         form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', new Blob([content], { type: mimeType }));
 
-        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
+        const fileBlob = content instanceof Blob ? content : new Blob([content], { type: mimeType });
+        form.append('file', fileBlob, fileName);
+
+        const response = await this.fetchWithAuth(
+            'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+            {
+                method: 'POST',
+                body: form,
             },
-            body: form,
-        });
+            { operation: '파일 업로드' }
+        );
 
         if (!response.ok) {
             const error = await response.text();
@@ -293,18 +389,19 @@ class GoogleDriveManager {
      * 기존 파일 업데이트
      */
     async updateFile(fileId, content, mimeType = 'text/plain') {
-        this.ensureAuthenticated();
-
         console.log('🔄 파일 업데이트 중...');
 
-        const response = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-                'Content-Type': mimeType,
+        const response = await this.fetchWithAuth(
+            `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+            {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': mimeType,
+                },
+                body: content,
             },
-            body: content,
-        });
+            { operation: '파일 업데이트' }
+        );
 
         if (!response.ok) {
             throw new Error(`파일 업데이트 실패: ${response.statusText}`);
@@ -318,16 +415,10 @@ class GoogleDriveManager {
      * 파일 검색 (이름으로)
      */
     async findFileByName(fileName) {
-        this.ensureAuthenticated();
-
         const query = `name='${fileName}' and '${this.targetFolderId}' in parents and trashed = false`;
         const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name)&key=${this.apiKey}`;
 
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-            },
-        });
+        const response = await this.fetchWithAuth(url, {}, { operation: '파일 검색' });
 
         if (!response.ok) {
             throw new Error(`파일 검색 실패: ${response.statusText}`);
@@ -396,14 +487,10 @@ class GoogleDriveManager {
      * 파일 삭제
      */
     async deleteFile(fileId) {
-        const response = await fetch(
+        const response = await this.fetchWithAuth(
             `https://www.googleapis.com/drive/v3/files/${fileId}`,
-            {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`
-                }
-            }
+            { method: 'DELETE' },
+            { operation: '파일 삭제' }
         );
 
         if (!response.ok) {
@@ -424,6 +511,7 @@ class GoogleDriveManager {
         }
         this.clearStoredToken();
         this.initialized = false;
+        this.notifyAuthState();
     }
 }
 
@@ -519,9 +607,7 @@ window.initGoogleDrive = async function() {
                     throw new Error('Google Drive Manager가 초기화되지 않았습니다');
                 }
                 
-                if (!window.driveManager.isAccessTokenValid()) {
-                    throw new Error('Google Drive 로그인이 필요합니다');
-                }
+                await window.driveManager.ensureAuthenticated({ allowInteractive: true });
                 
                 // 파일 검색
                 const files = await window.driveManager.listFiles();
@@ -565,9 +651,7 @@ window.initGoogleDrive = async function() {
                     throw new Error('Google Drive Manager가 초기화되지 않았습니다');
                 }
                 
-                if (!window.driveManager.isAccessTokenValid()) {
-                    throw new Error('Google Drive 로그인이 필요합니다');
-                }
+                await window.driveManager.ensureAuthenticated({ allowInteractive: true });
                 
                 const baseName = dxfFileName.replace(/\.dxf$/i, '');
                 const ensurePhotoFileName = (photo) => {
