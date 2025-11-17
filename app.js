@@ -53,6 +53,7 @@ class DxfPhotoEditor {
         };
         
         this.selectedPhotoId = null;
+        this.selectedTextId = null;
         
         // 사진 그룹 관리 (동일 좌표의 여러 사진)
         this.currentPhotoGroup = []; // 현재 보고 있는 좌표의 사진 ID 배열
@@ -752,6 +753,28 @@ class DxfPhotoEditor {
                 this.saveTextInput();
             });
         }
+
+        const textEditCloseBtn = document.getElementById('text-edit-close');
+        const textEditSaveBtn = document.getElementById('text-edit-save-btn');
+        const textEditDeleteBtn = document.getElementById('text-edit-delete-btn');
+
+        if (textEditCloseBtn) {
+            textEditCloseBtn.addEventListener('click', () => {
+                this.hideTextEditModal();
+            });
+        }
+
+        if (textEditSaveBtn) {
+            textEditSaveBtn.addEventListener('click', () => {
+                this.saveTextEdit();
+            });
+        }
+
+        if (textEditDeleteBtn) {
+            textEditDeleteBtn.addEventListener('click', () => {
+                this.deleteSelectedText();
+            });
+        }
         
         // 컨텍스트 메뉴 외부 클릭/터치 시 닫기
         const handleOutsideClick = (e) => {
@@ -1151,9 +1174,104 @@ class DxfPhotoEditor {
         
         this.hideTextInputModal();
         this.redraw();
+
         
         // Google Drive 자동 저장
         this.autoSave();
+    }
+
+    openTextEditModal(textId) {
+        const modal = document.getElementById('text-edit-modal');
+        const textField = document.getElementById('text-edit-field');
+        
+        if (!modal || !textField) {
+            console.warn('⚠️ 텍스트 편집 모달 요소를 찾을 수 없습니다');
+            return;
+        }
+
+        const targetText = this.texts.find(t => t.id === textId);
+        if (!targetText) {
+            console.warn('⚠️ 편집할 텍스트를 찾을 수 없습니다:', textId);
+            return;
+        }
+
+        this.selectedTextId = textId;
+        textField.value = targetText.text || '';
+        modal.classList.add('active');
+
+        setTimeout(() => {
+            textField.focus({ preventScroll: true });
+        }, 100);
+    }
+
+    hideTextEditModal() {
+        const modal = document.getElementById('text-edit-modal');
+        const textField = document.getElementById('text-edit-field');
+
+        if (modal) {
+            modal.classList.remove('active');
+        }
+
+        if (textField) {
+            textField.value = '';
+        }
+
+        this.selectedTextId = null;
+    }
+
+    saveTextEdit() {
+        if (!this.selectedTextId) {
+            this.hideTextEditModal();
+            return;
+        }
+
+        const textField = document.getElementById('text-edit-field');
+        if (!textField) return;
+
+        const newValue = textField.value.trim();
+        if (!newValue) {
+            alert('텍스트를 입력하세요.');
+            return;
+        }
+
+        const targetText = this.texts.find(t => t.id === this.selectedTextId);
+        if (!targetText) {
+            this.hideTextEditModal();
+            return;
+        }
+
+        if (targetText.text !== newValue) {
+            targetText.text = newValue;
+            this.metadataDirty = true;
+            this.redraw();
+            this.autoSave();
+            this.showToast('✅ 텍스트가 수정되었습니다.');
+        }
+
+        this.hideTextEditModal();
+    }
+
+    deleteSelectedText() {
+        if (!this.selectedTextId) {
+            return;
+        }
+
+        const textIndex = this.texts.findIndex(t => t.id === this.selectedTextId);
+        if (textIndex === -1) {
+            this.hideTextEditModal();
+            return;
+        }
+
+        if (!confirm('선택한 텍스트를 삭제하시겠습니까?')) {
+            return;
+        }
+
+        this.texts.splice(textIndex, 1);
+        this.metadataDirty = true;
+        this.hideTextEditModal();
+        this.redraw();
+        this.autoSave();
+        this.showToast('🗑️ 텍스트가 삭제되었습니다.');
     }
     
     /**
@@ -3098,7 +3216,12 @@ class DxfPhotoEditor {
                         if (tappedPhoto) {
                             this.queueSingleTapAction(() => this.openPhotoViewModal(tappedPhoto.id));
                         } else {
-                            this.clearPendingSingleTap();
+                            const tappedText = this.checkTextClick(touch.clientX, touch.clientY, { openModal: false });
+                            if (tappedText) {
+                                this.queueSingleTapAction(() => this.openTextEditModal(tappedText.id));
+                            } else {
+                                this.clearPendingSingleTap();
+                            }
                         }
                     }
                 } else {
@@ -3262,6 +3385,56 @@ class DxfPhotoEditor {
     }
 
     /**
+     * 텍스트 클릭 확인
+     */
+    checkTextClick(clientX, clientY, options = {}) {
+        const { openModal = true } = options;
+        if (!this.texts || this.texts.length === 0) {
+            return null;
+        }
+
+        const rect = this.getCachedRect();
+        if (!rect) {
+            return null;
+        }
+
+        const clickX = clientX - rect.left;
+        const clickY = clientY - rect.top;
+        const padding = 5;
+
+        for (let i = this.texts.length - 1; i >= 0; i--) {
+            const textObj = this.texts[i];
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(textObj.x, textObj.y);
+            const fontScale = this.viewBox.width !== 0 ? (textObj.fontSize / this.viewBox.width) : 0;
+            let fontSize = fontScale * rect.width;
+            if (!isFinite(fontSize) || fontSize <= 0) {
+                fontSize = 12;
+            }
+
+            this.ctx.save();
+            this.ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
+            const textWidth = this.ctx.measureText(textObj.text || '').width;
+            this.ctx.restore();
+
+            const halfWidth = textWidth / 2;
+            const halfHeight = fontSize / 2;
+            const left = screenX - halfWidth - padding;
+            const right = screenX + halfWidth + padding;
+            const top = screenY - halfHeight - padding;
+            const bottom = screenY + halfHeight + padding;
+
+            if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) {
+                if (openModal) {
+                    this.openTextEditModal(textObj.id);
+                }
+                return textObj;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * 캔버스 클릭 이벤트 (이모지 클릭 감지)
      * SVG 클릭 이벤트에서 호출됨
      */
@@ -3275,7 +3448,11 @@ class DxfPhotoEditor {
         }
         
         // 사진 클릭 확인
-        this.checkPhotoClick(e.clientX, e.clientY, { openModal: true });
+        const clickedPhoto = this.checkPhotoClick(e.clientX, e.clientY, { openModal: true });
+
+        if (!clickedPhoto) {
+            this.checkTextClick(e.clientX, e.clientY, { openModal: true });
+        }
     }
     
     /**

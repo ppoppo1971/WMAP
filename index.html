@@ -614,6 +614,25 @@
             color: white;
         }
 
+        .text-edit-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .text-edit-actions .btn {
+            flex: 1;
+        }
+
+        .btn-delete {
+            background: #FF3B30;
+            color: white;
+        }
+
+        .btn-delete:active {
+            background: #C60B00;
+        }
+
         /* 사진 보기 모달 스타일 */
         .photo-modal-content {
             max-width: 600px;
@@ -951,6 +970,21 @@
             <div class="text-input-buttons">
                 <button class="btn-cancel" id="text-cancel-btn">취소</button>
                 <button class="btn-save" id="text-save-btn">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 텍스트 편집 모달 -->
+    <div class="text-input-modal" id="text-edit-modal">
+        <div class="text-input-content">
+            <div class="modal-header">
+                <h3>📝 텍스트 편집</h3>
+                <span class="close-btn" id="text-edit-close">&times;</span>
+            </div>
+            <textarea id="text-edit-field" placeholder="텍스트를 수정하세요..."></textarea>
+            <div class="text-edit-actions">
+                <button class="btn btn-save" id="text-edit-save-btn">수정</button>
+                <button class="btn btn-delete" id="text-edit-delete-btn">제거</button>
             </div>
         </div>
     </div>
