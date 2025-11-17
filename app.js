@@ -83,13 +83,6 @@ class DxfPhotoEditor {
         this.texts = []; // { id, x, y, text, fontSize }
         this.metadataDirty = false;
         
-        // 블록 삽입점 스냅 관련
-        this.blockInsertionPoints = []; // 블록 삽입점 캐시 { x, y, blockName }
-        this.snapDistance = 2.0; // 도면 단위 기본 2m 이내
-        this.snapDistanceRatio = 0.02; // ViewBox 폭의 2% (축척 대응)
-        this.snapPreviewMarkers = []; // 스냅 가능한 블록 시각적 표시용
-        this.nearestSnapPoint = null; // 현재 가장 가까운 스냅 포인트
-        
         // 렌더링 최적화
         this.redrawPending = false;
         this.updatePending = false;
@@ -669,22 +662,11 @@ class DxfPhotoEditor {
                     return;
                 }
                 
-                // 블록 삽입점 스냅 적용
-                let position = {
+                const position = {
                     x: this.longPressPosition.x,
                     y: this.longPressPosition.y
                 };
-                
-                const nearestBlock = this.findNearestBlockInsertionPoint(position.x, position.y);
-                if (nearestBlock) {
-                    position.x = nearestBlock.x;
-                    position.y = nearestBlock.y;
-                    console.log(`   🎯 블록 "${nearestBlock.blockName}" 삽입점으로 스냅됨`);
-                    this.showToast(`🎯 블록 삽입점 스냅: ${nearestBlock.blockName}`);
-                } else {
-                    console.log('   → 스냅 없음, 원래 위치 사용:', position);
-                }
-                
+
                 this.showToast('📸 사진 처리 중...');
                 await this.addPhotoAt(file, position);
                 
@@ -718,22 +700,11 @@ class DxfPhotoEditor {
                     return;
                 }
                 
-                // 블록 삽입점 스냅 적용
-                let position = {
+                const position = {
                     x: this.longPressPosition.x,
                     y: this.longPressPosition.y
                 };
-                
-                const nearestBlock = this.findNearestBlockInsertionPoint(position.x, position.y);
-                if (nearestBlock) {
-                    position.x = nearestBlock.x;
-                    position.y = nearestBlock.y;
-                    console.log(`   🎯 블록 "${nearestBlock.blockName}" 삽입점으로 스냅됨`);
-                    this.showToast(`🎯 블록 삽입점 스냅: ${nearestBlock.blockName}`);
-                } else {
-                    console.log('   → 스냅 없음, 원래 위치 사용:', position);
-                }
-                
+
                 this.showToast('🖼️ 사진 처리 중...');
                 await this.addPhotoAt(file, position);
                 
@@ -799,6 +770,16 @@ class DxfPhotoEditor {
             });
         } else {
             console.warn('⚠️ delete-photo-btn 버튼을 찾을 수 없습니다 (사진 보기 모달)');
+        }
+        
+        // 재저장 버튼 이벤트
+        const reuploadPhotoBtn = document.getElementById('reupload-photo-btn');
+        if (reuploadPhotoBtn) {
+            reuploadPhotoBtn.addEventListener('click', () => {
+                this.reuploadPhoto();
+            });
+        } else {
+            console.warn('⚠️ reupload-photo-btn 버튼을 찾을 수 없습니다');
         }
 
         this.setupPhotoMemoInlineEditing();
@@ -897,9 +878,6 @@ class DxfPhotoEditor {
         if (navigator.vibrate) {
             navigator.vibrate(50);
         }
-        
-        // 스냅 미리보기 그리기
-        this.drawSnapPreview(this.longPressPosition.x, this.longPressPosition.y);
         
         // 컨텍스트 메뉴 표시
         this.showContextMenu(this.longPressPosition.screenX, this.longPressPosition.screenY);
@@ -1060,9 +1038,6 @@ class DxfPhotoEditor {
             contextMenu.classList.remove('active');
         }
         
-        // 스냅 미리보기 지우기
-        this.nearestSnapPoint = null;
-        this.redraw();
     }
     
     /**
@@ -1858,6 +1833,9 @@ class DxfPhotoEditor {
         
         this.dxfFileName = fileName.replace('.dxf', '');
         
+        // 파일명 UI 업데이트
+        this.updateFileNameDisplay(fileName);
+        
         // 캔버스 초기화
         this.photos = [];
         this.scale = 1;
@@ -2089,157 +2067,6 @@ class DxfPhotoEditor {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
     
-    /**
-     * 블록 삽입점 수집 (스냅 기능용)
-     */
-    collectBlockInsertionPoints() {
-        this.blockInsertionPoints = [];
-        
-        if (!this.dxfData || !this.dxfData.entities) return;
-        
-        this.dxfData.entities.forEach(entity => {
-            if (entity.type === 'INSERT' && entity.position) {
-                this.blockInsertionPoints.push({
-                    x: entity.position.x,
-                    y: entity.position.y,
-                    blockName: entity.name || 'Unknown'
-                });
-            }
-        });
-        
-        console.log(`📍 블록 삽입점 ${this.blockInsertionPoints.length}개 수집 완료`);
-    }
-    
-    /**
-     * 롱프레스 위치에서 가장 가까운 블록 삽입점 찾기
-     * @param {number} x - ViewBox X 좌표
-     * @param {number} y - ViewBox Y 좌표
-     * @returns {Object|null} 가장 가까운 블록 삽입점 또는 null
-     */
-    findNearestBlockInsertionPoint(x, y) {
-        if (this.blockInsertionPoints.length === 0) {
-            console.log('❌ 수집된 블록 삽입점이 없습니다');
-            return null;
-        }
-        
-        // 축척 대응: ViewBox 크기에 비례한 동적 스냅 거리
-        const dynamicSnapDistance = this.viewBox.width * this.snapDistanceRatio;
-        const effectiveSnapDistance = Math.max(dynamicSnapDistance, this.snapDistance);
-        
-        console.log(`📍 블록 검색 시작 - 롱프레스 위치: (${x.toFixed(2)}, ${y.toFixed(2)})`);
-        console.log(`   ViewBox 폭: ${this.viewBox.width.toFixed(2)}`);
-        console.log(`   동적 스냅 거리: ${dynamicSnapDistance.toFixed(3)} (ViewBox의 ${(this.snapDistanceRatio*100)}%)`);
-        console.log(`   최소 스냅 거리: ${this.snapDistance}`);
-        console.log(`   → 적용 스냅 거리: ${effectiveSnapDistance.toFixed(3)}`);
-        console.log(`   총 블록 개수: ${this.blockInsertionPoints.length}개`);
-        
-        let nearest = null;
-        let minDistance = Infinity;
-        const snapCandidates = [];
-        
-        for (const point of this.blockInsertionPoints) {
-            const distance = Math.sqrt(
-                Math.pow(point.x - x, 2) + 
-                Math.pow(point.y - y, 2)
-            );
-            
-            // 스냅 거리 이내의 모든 블록 기록 (디버깅용)
-            if (distance <= effectiveSnapDistance) {
-                snapCandidates.push({
-                    blockName: point.blockName,
-                    distance: distance.toFixed(3),
-                    position: `(${point.x.toFixed(2)}, ${point.y.toFixed(2)})`
-                });
-            }
-            
-            if (distance < minDistance) {
-                minDistance = distance;
-                nearest = { ...point, distance };
-            }
-        }
-        
-        console.log(`   가장 가까운 블록: "${nearest?.blockName}" 거리: ${minDistance.toFixed(3)}`);
-        console.log(`   ${effectiveSnapDistance.toFixed(3)} 이내 블록들:`, snapCandidates);
-        
-        if (nearest && minDistance <= effectiveSnapDistance) {
-            console.log(`🎯 스냅 성공: "${nearest.blockName}" (거리: ${minDistance.toFixed(3)})`);
-            this.nearestSnapPoint = nearest;
-            return nearest;
-        } else {
-            console.log(`❌ 스냅 실패: ${effectiveSnapDistance.toFixed(3)} 이내에 블록 없음 (최단거리: ${minDistance.toFixed(3)})`);
-            this.nearestSnapPoint = null;
-            return null;
-        }
-    }
-    
-    /**
-     * 스냅 가능한 블록들을 Canvas에 표시 (시각적 피드백)
-     */
-    drawSnapPreview(longPressX, longPressY) {
-        if (this.blockInsertionPoints.length === 0) return;
-        
-        const rect = this.getCachedRect();
-        const dynamicSnapDistance = this.viewBox.width * this.snapDistanceRatio;
-        const effectiveSnapDistance = Math.max(dynamicSnapDistance, this.snapDistance);
-        
-        this.ctx.save();
-        
-        // 스냅 거리 이내의 모든 블록 표시
-        this.blockInsertionPoints.forEach(point => {
-            const distance = Math.sqrt(
-                Math.pow(point.x - longPressX, 2) + 
-                Math.pow(point.y - longPressY, 2)
-            );
-            
-            if (distance <= effectiveSnapDistance) {
-                const { x: screenX, y: screenY } = this.viewToCanvasCoords(point.x, point.y);
-                
-                // 스냅 가능 범위를 원으로 표시 (노란색)
-                this.ctx.strokeStyle = 'rgba(255, 200, 0, 0.5)';
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
-                this.ctx.stroke();
-                
-                // 중심점 표시 (빨간색 십자)
-                this.ctx.strokeStyle = '#FF0000';
-                this.ctx.lineWidth = 2;
-                this.ctx.beginPath();
-                this.ctx.moveTo(screenX - 8, screenY);
-                this.ctx.lineTo(screenX + 8, screenY);
-                this.ctx.moveTo(screenX, screenY - 8);
-                this.ctx.lineTo(screenX, screenY + 8);
-                this.ctx.stroke();
-                
-                // 블록 이름 표시
-                this.ctx.fillStyle = '#FF0000';
-                this.ctx.font = 'bold 12px Arial';
-                this.ctx.textAlign = 'center';
-                this.ctx.fillText(point.blockName, screenX, screenY - 20);
-                
-                // 거리 표시
-                this.ctx.fillStyle = '#666';
-                this.ctx.font = '10px Arial';
-                this.ctx.fillText(`${distance.toFixed(2)}m`, screenX, screenY + 25);
-            }
-        });
-        
-        // 가장 가까운 블록을 더 강조 (녹색)
-        if (this.nearestSnapPoint) {
-            const { x: screenX, y: screenY } = this.viewToCanvasCoords(
-                this.nearestSnapPoint.x, 
-                this.nearestSnapPoint.y
-            );
-            
-            this.ctx.strokeStyle = '#00FF00';
-            this.ctx.lineWidth = 3;
-            this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, 20, 0, Math.PI * 2);
-            this.ctx.stroke();
-        }
-        
-        this.ctx.restore();
-    }
     
     drawDxfSvg() {
         // SVG 초기화
@@ -2254,9 +2081,6 @@ class DxfPhotoEditor {
             `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.width} ${this.viewBox.height}`);
         
         this.debugLog('🖊️ SVG drawDxf() 시작, 엔티티:', this.dxfData.entities.length);
-        
-        // 블록 삽입점 수집 (스냅 기능용)
-        this.collectBlockInsertionPoints();
         
         let drawnCount = 0;
         let errorCount = 0;
@@ -2284,7 +2108,6 @@ class DxfPhotoEditor {
         
         this.svgGroup.appendChild(fragment);
         this.debugLog(`SVG 렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
-        this.debugLog(`블록 삽입점: ${this.blockInsertionPoints.length}개 수집됨`);
     }
     
     createSvgElement(entity) {
@@ -2723,13 +2546,27 @@ class DxfPhotoEditor {
             
             this.ctx.save();
             
+            // 업로드 상태에 따른 색상 및 크기 결정
+            const isUploaded = photo.uploaded === true;
             const hasMemo = photo.memo && photo.memo.trim();
-            const markerColor = hasMemo ? '#9B51E0' : '#FF0000';
             
-            // 작은 원으로 표시 (7.5px 고정)
+            let markerColor;
+            let markerRadius;
+            
+            if (isUploaded) {
+                // 업로드 완료 → 빨간점 (작은 크기)
+                markerColor = hasMemo ? '#9B51E0' : '#FF0000'; // 보라색(메모) 또는 빨간색
+                markerRadius = 3.75; // 직경 7.5px (작음)
+            } else {
+                // 업로드 실패/대기 → 초록색 (2배 크기) - 사용자 알림
+                markerColor = '#00C853'; // 초록색 (주의 필요)
+                markerRadius = 7.5; // 직경 15px (2배 크기)
+            }
+            
+            // 원 그리기
             this.ctx.fillStyle = markerColor;
             this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, 3.75, 0, Math.PI * 2); // 반지름 3.75px (직경 7.5px)
+            this.ctx.arc(screenX, screenY, markerRadius, 0, Math.PI * 2);
             this.ctx.fill();
             
             // 테두리 (흰색, 더 잘 보이게)
@@ -3562,6 +3399,71 @@ class DxfPhotoEditor {
     }
     
     /**
+     * 사진 재업로드 (업로드 실패한 사진을 다시 업로드)
+     */
+    async reuploadPhoto() {
+        if (!this.selectedPhotoId) {
+            this.showToast('⚠️ 선택된 사진이 없습니다');
+            return;
+        }
+        
+        const photo = this.photos.find(p => p.id === this.selectedPhotoId);
+        if (!photo) {
+            this.showToast('⚠️ 사진을 찾을 수 없습니다');
+            return;
+        }
+        
+        // 이미 업로드된 경우
+        if (photo.uploaded === true) {
+            this.showToast('ℹ️ 이미 정상 저장된 사진입니다');
+            return;
+        }
+        
+        try {
+            this.showToast('📤 재업로드 중...');
+            console.log('📤 사진 재업로드 시작:', photo.id);
+            
+            // Google Drive에 업로드
+            if (window.currentDriveFile && window.saveToDrive) {
+                const baseName = this.getDxfBaseName();
+                const timestamp = new Date().toISOString()
+                    .replace(/[-:]/g, '')
+                    .replace(/T/, '_')
+                    .replace(/\..+/, '')
+                    .slice(4, 13); // MMDDHHmmss
+                const fileName = `${baseName}_photo_${timestamp}.jpg`;
+                
+                photo.fileName = fileName;
+                
+                // 사진만 업로드 (메타데이터는 autoSave에서 처리)
+                const appData = {
+                    photos: [photo], // 이 사진만
+                    allPhotos: this.photos, // 전체 사진 목록
+                    texts: this.texts
+                };
+                
+                await window.saveToDrive(appData, window.currentDriveFile.name);
+                
+                photo.uploaded = true;
+                this.metadataDirty = true;
+                
+                console.log('   ✅ Google Drive 업로드 완료');
+                
+                // 화면 다시 그리기 (마커 색상 변경)
+                this.redraw();
+                
+                this.showToast('✅ 재업로드 완료');
+                console.log('✅ 사진 재업로드 완료:', photo.id);
+            } else {
+                throw new Error('Google Drive 연결이 필요합니다');
+            }
+        } catch (error) {
+            console.error('❌ 사진 재업로드 실패:', error);
+            this.showToast('⚠️ 재업로드 실패: ' + error.message);
+        }
+    }
+    
+    /**
      * Google Drive 자동 저장
      */
     async autoSave() {
@@ -3638,6 +3540,16 @@ class DxfPhotoEditor {
     /**
      * 토스트 메시지 표시
      */
+    /**
+     * 도면 파일명 표시 업데이트
+     */
+    updateFileNameDisplay(fileName) {
+        const fileNameText = document.getElementById('file-name-text');
+        if (fileNameText) {
+            fileNameText.textContent = fileName;
+        }
+    }
+    
     showToast(message) {
         // 기존 토스트 제거
         const existingToast = document.querySelector('.toast-message');

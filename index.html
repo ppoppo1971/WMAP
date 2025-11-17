@@ -299,6 +299,28 @@
             pointer-events: auto !important;
         }
 
+        /* 도면 파일명 표시 (중앙 상단) */
+        .file-name-display {
+            position: fixed !important;
+            top: 20px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            background: rgba(0, 0, 0, 0.75) !important;
+            color: white !important;
+            padding: 10px 20px !important;
+            border-radius: 20px !important;
+            font-size: 16px !important;
+            font-weight: 600 !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+            z-index: 9997 !important;
+            pointer-events: none !important;
+            max-width: 80vw !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+        }
+
         /* 햄버거 메뉴 (우측 상단) */
         .hamburger-btn {
             position: fixed !important;
@@ -757,7 +779,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택1038</h2>
+                <h2>📁 DXF 도면 선택0224>
             </div>
             
             <div class="file-list-actions">
@@ -786,6 +808,11 @@
     
     <!-- 뷰어 화면 UI - body 직접 자식 (최상위 레이어) -->
     <div id="viewer-ui" class="viewer-ui hidden">
+        <!-- 도면 파일명 표시 (중앙 상단) -->
+        <div class="file-name-display" id="file-name-display">
+            <span id="file-name-text">도면 로딩 중...</span>
+        </div>
+        
         <!-- 햄버거 메뉴 (우측 상단 고정) -->
         <button class="hamburger-btn" id="hamburger-btn">
             <span>☰</span>
@@ -847,7 +874,10 @@
                 <img id="photo-view-image" class="photo-view-img">
             </div>
             <textarea class="photo-memo-display" id="photo-memo-input" placeholder="이 사진에 대한 메모를 입력하세요..." disabled></textarea>
-            <button class="btn" id="delete-photo-btn" style="background: #FF3B30; width: 100%;">사진 삭제</button>
+            <div class="photo-modal-buttons">
+                <button class="btn" id="reupload-photo-btn" style="background: #34C759;">📤 재저장</button>
+                <button class="btn" id="delete-photo-btn" style="background: #FF3B30;">🗑️ 삭제</button>
+            </div>
         </div>
     </div>
 
