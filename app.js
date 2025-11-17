@@ -54,6 +54,10 @@ class DxfPhotoEditor {
         
         this.selectedPhotoId = null;
         
+        // 사진 그룹 관리 (동일 좌표의 여러 사진)
+        this.currentPhotoGroup = []; // 현재 보고 있는 좌표의 사진 ID 배열
+        this.currentPhotoIndex = 0; // 현재 보고 있는 사진의 인덱스
+        
         // 롱프레스 관련
         this.longPressTimer = null;
         this.longPressDuration = 350; // 0.35초 (약간 빠르게)
@@ -659,6 +663,7 @@ class DxfPhotoEditor {
                 console.log('   파일 크기:', file?.size, 'bytes');
                 console.log('   파일 타입:', file?.type);
                 console.log('   롱프레스 위치:', this.longPressPosition);
+                console.log('   대기 중인 위치:', this.pendingPhotoLocation);
                 
                 if (!file) {
                     console.warn('⚠️ 선택된 파일이 없습니다');
@@ -672,13 +677,17 @@ class DxfPhotoEditor {
                     return;
                 }
                 
-                const position = {
-                    x: this.longPressPosition.x,
-                    y: this.longPressPosition.y
-                };
+                // pendingPhotoLocation이 있으면 사용 (동일 좌표에 추가)
+                // 없으면 longPressPosition 사용 (일반 추가)
+                const position = this.pendingPhotoLocation 
+                    ? { x: this.pendingPhotoLocation.x, y: this.pendingPhotoLocation.y }
+                    : { x: this.longPressPosition.x, y: this.longPressPosition.y };
 
                 this.showToast('📸 사진 처리 중...');
-                await this.addPhotoAt(file, position);
+                await this.addPhotoAt(file, position, this.pendingPhotoLocation);
+                
+                // pendingPhotoLocation 초기화
+                this.pendingPhotoLocation = null;
                 
             } catch (error) {
                 console.error('❌ 카메라 입력 처리 오류:', error);
@@ -790,6 +799,31 @@ class DxfPhotoEditor {
             });
         } else {
             console.warn('⚠️ reupload-photo-btn 버튼을 찾을 수 없습니다');
+        }
+        
+        // 사진 네비게이션 버튼 이벤트
+        const photoPrevBtn = document.getElementById('photo-prev-btn');
+        if (photoPrevBtn) {
+            photoPrevBtn.addEventListener('click', () => {
+                this.navigatePhoto(-1);
+            });
+        }
+        
+        const photoNextBtn = document.getElementById('photo-next-btn');
+        if (photoNextBtn) {
+            photoNextBtn.addEventListener('click', () => {
+                this.navigatePhoto(1);
+            });
+        }
+        
+        // 사진 촬영 버튼 이벤트 (모달 내부)
+        const capturePhotoBtn = document.getElementById('capture-photo-btn');
+        if (capturePhotoBtn) {
+            capturePhotoBtn.addEventListener('click', () => {
+                this.capturePhotoAtCurrentLocation();
+            });
+        } else {
+            console.warn('⚠️ capture-photo-btn 버튼을 찾을 수 없습니다');
         }
 
         this.setupPhotoMemoInlineEditing();
@@ -2595,13 +2629,14 @@ class DxfPhotoEditor {
      * @param {File} file - 이미지 파일
      * @param {Object} position - {x, y} ViewBox 좌표
      */
-    async addPhotoAt(file, position) {
+    async addPhotoAt(file, position, locationInfo = null) {
         this.debugLog('====================================');
         this.debugLog('📷 addPhotoAt 호출됨');
         this.debugLog('   파일:', file);
         this.debugLog('   파일명:', file?.name);
         this.debugLog('   파일 크기:', file?.size, 'bytes');
         this.debugLog('   위치:', position);
+        this.debugLog('   위치 정보:', locationInfo);
         this.debugLog('====================================');
         
         if (!file) {
@@ -2684,6 +2719,12 @@ class DxfPhotoEditor {
             this.debugLog('7️⃣ 자동 저장 시작...');
             this.showToast('☁️ 저장 중...');
             await this.autoSave();
+            
+            // 동일 좌표에 추가된 경우 모달 다시 열기
+            if (locationInfo && this.currentPhotoGroup.length > 0) {
+                this.debugLog('8️⃣ 동일 좌표 추가 감지, 모달 다시 열기...');
+                await this.openPhotoViewModal(photo.id);
+            }
             
         } catch (error) {
             console.error('❌❌❌ 사진 추가 오류 ❌❌❌');
@@ -3244,6 +3285,38 @@ class DxfPhotoEditor {
         const photo = this.photos.find(p => p.id === photoId);
         if (!photo) return;
         
+        // 동일 좌표의 모든 사진 찾기 (약간의 오차 허용)
+        const tolerance = 0.1; // 좌표 오차 허용 범위
+        this.currentPhotoGroup = this.photos.filter(p => 
+            Math.abs(p.x - photo.x) < tolerance && 
+            Math.abs(p.y - photo.y) < tolerance
+        ).map(p => p.id);
+        
+        // 현재 사진의 인덱스 찾기
+        this.currentPhotoIndex = this.currentPhotoGroup.indexOf(photoId);
+        if (this.currentPhotoIndex === -1) {
+            this.currentPhotoIndex = 0;
+        }
+        
+        console.log(`📸 사진 그룹: ${this.currentPhotoGroup.length}개 사진 발견 (인덱스: ${this.currentPhotoIndex + 1})`);
+        
+        // 사진 표시
+        await this.displayPhotoInModal(photoId);
+        
+        // 네비게이션 UI 업데이트
+        this.updatePhotoNavigationUI();
+        
+        // 모달 열기
+        document.getElementById('photo-view-modal').classList.add('active');
+    }
+    
+    /**
+     * 모달에 사진 표시 (공통 함수)
+     */
+    async displayPhotoInModal(photoId) {
+        const photo = this.photos.find(p => p.id === photoId);
+        if (!photo) return;
+        
         this.selectedPhotoId = photoId;
         
         const photoImageEl = document.getElementById('photo-view-image');
@@ -3289,9 +3362,82 @@ class DxfPhotoEditor {
                 this.photoMemoInput.focus({ preventScroll: true });
             }, 50);
         }
+    }
+    
+    /**
+     * 사진 네비게이션 UI 업데이트
+     */
+    updatePhotoNavigationUI() {
+        const prevBtn = document.getElementById('photo-prev-btn');
+        const nextBtn = document.getElementById('photo-next-btn');
+        const counterEl = document.getElementById('photo-counter');
         
-        // 모달 열기
-        document.getElementById('photo-view-modal').classList.add('active');
+        const photoCount = this.currentPhotoGroup.length;
+        
+        // 사진 카운터 업데이트
+        if (counterEl) {
+            if (photoCount > 1) {
+                counterEl.textContent = `(${this.currentPhotoIndex + 1}/${photoCount})`;
+            } else {
+                counterEl.textContent = '';
+            }
+        }
+        
+        // 네비게이션 버튼 표시/숨김
+        if (prevBtn) {
+            prevBtn.style.display = photoCount > 1 ? 'flex' : 'none';
+        }
+        if (nextBtn) {
+            nextBtn.style.display = photoCount > 1 ? 'flex' : 'none';
+        }
+    }
+    
+    /**
+     * 사진 네비게이션 (이전/다음)
+     */
+    async navigatePhoto(direction) {
+        if (this.currentPhotoGroup.length <= 1) return;
+        
+        // 인라인 메모 저장
+        this.saveInlineMemo();
+        
+        // 인덱스 업데이트 (순환)
+        this.currentPhotoIndex += direction;
+        if (this.currentPhotoIndex < 0) {
+            this.currentPhotoIndex = this.currentPhotoGroup.length - 1;
+        } else if (this.currentPhotoIndex >= this.currentPhotoGroup.length) {
+            this.currentPhotoIndex = 0;
+        }
+        
+        // 사진 표시
+        const nextPhotoId = this.currentPhotoGroup[this.currentPhotoIndex];
+        await this.displayPhotoInModal(nextPhotoId);
+        
+        // UI 업데이트
+        this.updatePhotoNavigationUI();
+    }
+    
+    /**
+     * 현재 위치에 사진 촬영 추가
+     */
+    capturePhotoAtCurrentLocation() {
+        const currentPhoto = this.photos.find(p => p.id === this.selectedPhotoId);
+        if (!currentPhoto) {
+            this.showToast('⚠️ 현재 사진 정보를 찾을 수 없습니다.');
+            return;
+        }
+        
+        console.log(`📷 현재 위치에 사진 추가: (${currentPhoto.x}, ${currentPhoto.y})`);
+        
+        // 카메라 입력 트리거 (동일 좌표 저장을 위해 플래그 설정)
+        this.pendingPhotoLocation = {
+            x: currentPhoto.x,
+            y: currentPhoto.y,
+            width: currentPhoto.width,
+            height: currentPhoto.height
+        };
+        
+        document.getElementById('camera-input').click();
     }
     
     /**
@@ -3314,6 +3460,10 @@ class DxfPhotoEditor {
         }
         this.tempFetchedPhotoData = null;
         this.selectedPhotoId = null;
+        
+        // 사진 그룹 초기화
+        this.currentPhotoGroup = [];
+        this.currentPhotoIndex = 0;
     }
     
     /**

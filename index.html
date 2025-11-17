@@ -629,12 +629,54 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
         }
 
         .photo-view-img {
             width: 100%;
             height: auto;
             display: block;
+        }
+
+        /* 사진 네비게이션 버튼 */
+        .photo-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            font-size: 32px;
+            cursor: pointer;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+
+        .photo-nav-btn:active {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        .photo-nav-prev {
+            left: 10px;
+        }
+
+        .photo-nav-next {
+            right: 10px;
+        }
+
+        #photo-counter {
+            font-size: 16px;
+            color: #666;
+            font-weight: normal;
         }
 
         .photo-memo-display {
@@ -777,7 +819,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택0237</h2>
+                <h2>📁 DXF 도면 선택 0327</h2>
             </div>
             
             <div class="file-list-actions">
@@ -865,14 +907,17 @@
     <div class="modal photo-modal" id="photo-view-modal">
         <div class="modal-content photo-modal-content">
             <div class="modal-header">
-                <h2>📷 사진</h2>
+                <h2>📷 사진 <span id="photo-counter"></span></h2>
                 <span class="close-btn" id="close-photo-view">&times;</span>
             </div>
             <div class="photo-view-container">
+                <button class="photo-nav-btn photo-nav-prev" id="photo-prev-btn" style="display: none;">‹</button>
                 <img id="photo-view-image" class="photo-view-img">
+                <button class="photo-nav-btn photo-nav-next" id="photo-next-btn" style="display: none;">›</button>
             </div>
             <textarea class="photo-memo-display" id="photo-memo-input" placeholder="이 사진에 대한 메모를 입력하세요..." disabled></textarea>
             <div class="photo-modal-buttons">
+                <button class="btn" id="capture-photo-btn" style="background: #007AFF;">📷 촬영</button>
                 <button class="btn" id="reupload-photo-btn" style="background: #34C759;">📤 재저장</button>
                 <button class="btn" id="delete-photo-btn" style="background: #FF3B30;">🗑️ 삭제</button>
             </div>
