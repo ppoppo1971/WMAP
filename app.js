@@ -53,7 +53,6 @@ class DxfPhotoEditor {
         };
         
         this.selectedPhotoId = null;
-        this.selectedTextId = null; // 선택된 텍스트 ID (수정용)
         
         // 사진 그룹 관리 (동일 좌표의 여러 사진)
         this.currentPhotoGroup = []; // 현재 보고 있는 좌표의 사진 ID 배열
@@ -739,7 +738,6 @@ class DxfPhotoEditor {
         // 텍스트 입력 모달
         const textCancelBtn = document.getElementById('text-cancel-btn');
         const textSaveBtn = document.getElementById('text-save-btn');
-        const textDeleteBtn = document.getElementById('text-delete-btn');
         
         if (textCancelBtn) {
             textCancelBtn.addEventListener('click', () => {
@@ -753,15 +751,6 @@ class DxfPhotoEditor {
                 console.log('💾 텍스트 저장 시도');
                 this.saveTextInput();
             });
-        }
-        
-        if (textDeleteBtn) {
-            textDeleteBtn.addEventListener('click', () => {
-                console.log('🗑️ 텍스트 삭제 시도');
-                this.deleteText();
-            });
-        } else {
-            console.warn('⚠️ text-delete-btn 버튼을 찾을 수 없습니다');
         }
         
         // 컨텍스트 메뉴 외부 클릭/터치 시 닫기
@@ -1102,7 +1091,6 @@ class DxfPhotoEditor {
         console.log('📝 텍스트 입력 모달 표시 시도...');
         const modal = document.getElementById('text-input-modal');
         const textField = document.getElementById('text-input-field');
-        const deleteBtn = document.getElementById('text-delete-btn');
         
         if (!modal) {
             console.error('❌ 텍스트 모달 요소를 찾을 수 없음!');
@@ -1116,12 +1104,6 @@ class DxfPhotoEditor {
         
         textField.value = '';
         modal.classList.add('active');
-        
-        // 삭제 버튼 숨김 (새 텍스트 추가 모드)
-        if (deleteBtn) {
-            deleteBtn.style.display = 'none';
-        }
-        
         console.log('✅ 텍스트 입력 모달 표시됨');
         
         // 포커스
@@ -1136,22 +1118,13 @@ class DxfPhotoEditor {
      */
     hideTextInputModal() {
         const modal = document.getElementById('text-input-modal');
-        const deleteBtn = document.getElementById('text-delete-btn');
-        
         if (modal) {
             modal.classList.remove('active');
         }
-        
-        // 삭제 버튼 숨김
-        if (deleteBtn) {
-            deleteBtn.style.display = 'none';
-        }
-        
-        this.selectedTextId = null; // 초기화
     }
     
     /**
-     * 텍스트 저장 (새 추가 또는 수정)
+     * 텍스트 저장
      */
     saveTextInput() {
         const textField = document.getElementById('text-input-field');
@@ -1162,71 +1135,25 @@ class DxfPhotoEditor {
             return;
         }
         
-        if (this.selectedTextId) {
-            // 기존 텍스트 수정
-            const textObj = this.texts.find(t => t.id === this.selectedTextId);
-            if (textObj) {
-                textObj.text = text;
-                console.log('📝 텍스트 수정:', textObj);
-            }
-            this.selectedTextId = null;
-        } else {
-            // 새 텍스트 추가
-            const textObj = {
-                id: Date.now(),
-                x: this.longPressPosition.x,
-                y: this.longPressPosition.y,
-                text: text,
-                fontSize: this.viewBox.width * 0.02 // ViewBox 크기의 2%
-            };
-            
-            this.texts.push(textObj);
-            console.log('📝 텍스트 추가:', textObj);
-        }
+        // 텍스트 객체 생성
+        const textObj = {
+            id: Date.now(),
+            x: this.longPressPosition.x,
+            y: this.longPressPosition.y,
+            text: text,
+            fontSize: this.viewBox.width * 0.02 // ViewBox 크기의 2%
+        };
         
+        this.texts.push(textObj);
         this.metadataDirty = true;
+        
+        console.log('📝 텍스트 추가:', textObj);
         
         this.hideTextInputModal();
         this.redraw();
         
         // Google Drive 자동 저장
         this.autoSave();
-    }
-    
-    /**
-     * 텍스트 삭제
-     */
-    deleteText() {
-        if (!this.selectedTextId) {
-            console.warn('⚠️ 선택된 텍스트가 없습니다');
-            return;
-        }
-        
-        // 확인 대화상자
-        if (!confirm('이 텍스트를 삭제하시겠습니까?')) {
-            return;
-        }
-        
-        // 텍스트 배열에서 삭제
-        const textIndex = this.texts.findIndex(t => t.id === this.selectedTextId);
-        if (textIndex !== -1) {
-            const deletedText = this.texts[textIndex];
-            this.texts.splice(textIndex, 1);
-            console.log('🗑️ 텍스트 삭제:', deletedText.text);
-            
-            this.metadataDirty = true;
-            this.selectedTextId = null;
-            
-            this.hideTextInputModal();
-            this.redraw();
-            
-            // Google Drive 자동 저장
-            this.autoSave();
-            
-            this.showToast('텍스트가 삭제되었습니다');
-        } else {
-            console.error('❌ 텍스트를 찾을 수 없습니다');
-        }
     }
     
     /**
@@ -2203,7 +2130,6 @@ class DxfPhotoEditor {
         let errorCount = 0;
         const fragment = document.createDocumentFragment();
         
-        // DXF 객체를 먼저 추가 (아래층)
         this.dxfData.entities.forEach((entity, index) => {
             try {
                 if (!entity || !entity.type) {
@@ -2226,8 +2152,6 @@ class DxfPhotoEditor {
         
         this.svgGroup.appendChild(fragment);
         this.debugLog(`SVG 렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
-        
-        // 사진과 텍스트는 Canvas에서 그립니다 (drawPhotosCanvas에서 처리)
     }
     
     createSvgElement(entity) {
@@ -2605,113 +2529,51 @@ class DxfPhotoEditor {
         
         // 텍스트 그리기
         this.debugLog('            텍스트 그리기 시작 (' + this.texts.length + '개)');
-        this.drawTextsCanvas();
+        this.drawTexts();
         
         this.debugLog('         ✅ drawPhotosCanvas 완료');
     }
     
     /**
-     * 텍스트 그리기 (이제 SVG에서 그리므로 빈 함수)
+     * 텍스트 그리기 (최적화: rect 캐싱)
      */
     drawTexts() {
-        // 텍스트는 이제 SVG에서 그립니다 (drawDxf에서 처리)
+        this.texts.forEach(textObj => {
+            const rect = this.getCachedRect();
+            const { x, y } = this.viewToCanvasCoords(textObj.x, textObj.y);
+            const fontSize = (textObj.fontSize / this.viewBox.width) * rect.width;
+            
+            this.ctx.save();
+            
+            // 텍스트 스타일
+            this.ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
+            this.ctx.fillStyle = '#FF3B30'; // 빨간색 (잘 보이게)
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            
+            // 텍스트 배경 (가독성 향상)
+            const textWidth = this.ctx.measureText(textObj.text).width;
+            const padding = 5;
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            this.ctx.fillRect(x - textWidth / 2 - padding, y - fontSize / 2 - padding, 
+                             textWidth + padding * 2, fontSize + padding * 2);
+            
+            // 텍스트 그리기
+            this.ctx.fillStyle = '#FF3B30';
+            this.ctx.fillText(textObj.text, x, y);
+            
+            this.ctx.restore();
+        });
     }
+    
+    // 기존 Canvas 렌더링 함수들은 제거됨 (SVG로 대체)
     
     /**
-     * 사용자 텍스트를 SVG 요소로 생성
-     */
-    createUserTextElement(textObj) {
-        if (!textObj || !textObj.text) return null;
-        
-        // SVG 그룹 생성 (배경 + 텍스트)
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        
-        // 텍스트 배경 (흰색 사각형)
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        
-        // 텍스트 요소 생성
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', textObj.x);
-        text.setAttribute('y', -textObj.y); // Y축 반전
-        text.setAttribute('fill', '#FF3B30'); // 빨간색
-        text.setAttribute('font-family', 'Arial, sans-serif');
-        text.setAttribute('font-size', textObj.fontSize);
-        text.setAttribute('font-weight', 'bold');
-        text.setAttribute('text-anchor', 'middle');
-        text.setAttribute('dominant-baseline', 'middle');
-        text.textContent = textObj.text;
-        
-        // 텍스트 크기 계산 (근사값)
-        const charWidth = textObj.fontSize * 0.6; // 대략적인 문자 폭
-        const textWidth = textObj.text.length * charWidth;
-        const padding = textObj.fontSize * 0.3;
-        
-        // 배경 사각형 설정
-        rect.setAttribute('x', textObj.x - textWidth / 2 - padding);
-        rect.setAttribute('y', -textObj.y - textObj.fontSize / 2 - padding);
-        rect.setAttribute('width', textWidth + padding * 2);
-        rect.setAttribute('height', textObj.fontSize + padding * 2);
-        rect.setAttribute('fill', '#FFFFFF'); // SVG는 rgba 직접 지원 안 함
-        rect.setAttribute('fill-opacity', '0.9'); // 투명도는 별도 속성
-        rect.setAttribute('stroke', 'none');
-        
-        // 배경 먼저, 텍스트 나중에 추가 (텍스트가 위에)
-        group.appendChild(rect);
-        group.appendChild(text);
-        
-        // 텍스트 ID 저장 (클릭 감지용)
-        group.setAttribute('data-text-id', textObj.id);
-        
-        return group;
-    }
-    
-    createPhotoMarkerElement(photo) {
-        if (!photo) {
-            console.warn('⚠️ createPhotoMarkerElement: photo가 null');
-            return null;
-        }
-        
-        // SVG 그룹 생성 (원 + 테두리)
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        
-        // 업로드 상태에 따른 색상 및 크기 결정
-        const isUploaded = photo.uploaded === true;
-        const hasMemo = photo.memo && photo.memo.trim();
-        
-        let markerColor;
-        let markerRadius;
-        
-        if (isUploaded) {
-            // 업로드 완료 → 빨간점 (작은 크기)
-            markerColor = hasMemo ? '#9B51E0' : '#FF0000'; // 보라색(메모) 또는 빨간색
-            markerRadius = this.viewBox.width * 0.0015; // ViewBox 좌표계 기준
-        } else {
-            // 업로드 실패/대기 → 초록색 (2배 크기)
-            markerColor = '#00C853'; // 초록색
-            markerRadius = this.viewBox.width * 0.003; // 2배 크기
-        }
-        
-        console.log(`  📍 사진 마커 생성: (${photo.x}, ${-photo.y}), r=${markerRadius}, color=${markerColor}`);
-        
-        // 메인 원 (색상)
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', photo.x);
-        circle.setAttribute('cy', -photo.y); // Y축 반전
-        circle.setAttribute('r', markerRadius);
-        circle.setAttribute('fill', markerColor);
-        circle.setAttribute('stroke', '#FFFFFF'); // 흰색 테두리
-        circle.setAttribute('stroke-width', markerRadius * 0.4); // 테두리 두께
-        
-        group.appendChild(circle);
-        
-        // 사진 ID 저장 (클릭 감지용)
-        group.setAttribute('data-photo-id', photo.id);
-        
-        return group;
-    }
-    
-    /**
-     * 사진을 작은 점(●)으로 표시 (Canvas)
+     * 사진을 작은 점(●)으로 표시
+     * 수정: 
+     * - 이모지 대신 작은 점(●) 사용
+     * - 크기 15px로 고정 (가시성 확보)
+     * - ViewBox 좌표에 완전 고정
      */
     drawPhotos() {
         const rect = this.getCachedRect();
@@ -2760,56 +2622,6 @@ class DxfPhotoEditor {
         });
         
         this.debugLog('               ✅ drawPhotos 완료 - 총', this.photos.length, '개 그림');
-    }
-    
-    /**
-     * 텍스트를 Canvas에 그리기
-     */
-    drawTextsCanvas() {
-        const rect = this.getCachedRect();
-        this.debugLog('               📝 drawTextsCanvas 실행 - 텍스트 개수:', this.texts.length);
-        
-        this.texts.forEach((textObj, index) => {
-            // ViewBox 좌표 → 스크린 좌표 변환
-            const { x: screenX, y: screenY } = this.viewToCanvasCoords(textObj.x, textObj.y);
-            
-            // 화면 밖에 있으면 그리지 않음
-            if (screenX < -500 || screenX > rect.width + 500 || screenY < -500 || screenY > rect.height + 500) {
-                return;
-            }
-            
-            this.ctx.save();
-            
-            // 폰트 크기 계산 (ViewBox 좌표계를 화면 좌표로 변환)
-            const scale = rect.width / this.viewBox.width;
-            const screenFontSize = textObj.fontSize * scale;
-            
-            // 텍스트 배경 (흰색 사각형)
-            this.ctx.font = `bold ${screenFontSize}px Arial, sans-serif`;
-            const metrics = this.ctx.measureText(textObj.text);
-            const textWidth = metrics.width;
-            const textHeight = screenFontSize;
-            const padding = screenFontSize * 0.3;
-            
-            // 배경 그리기
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            this.ctx.fillRect(
-                screenX - textWidth / 2 - padding,
-                screenY - textHeight / 2 - padding,
-                textWidth + padding * 2,
-                textHeight + padding * 2
-            );
-            
-            // 텍스트 그리기 (빨간색)
-            this.ctx.fillStyle = '#FF3B30';
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            this.ctx.fillText(textObj.text, screenX, screenY);
-            
-            this.ctx.restore();
-        });
-        
-        this.debugLog('               ✅ drawTextsCanvas 완료 - 총', this.texts.length, '개 그림');
     }
     
     /**
@@ -3282,19 +3094,11 @@ class DxfPhotoEditor {
                     if (doubled) {
                         this.clearPendingSingleTap();
                     } else {
-                        // 텍스트 클릭 확인 (우선 순위 높음)
-                        const tappedText = this.checkTextClick(touch.clientX, touch.clientY);
-                        if (tappedText) {
-                            // 텍스트 클릭 시 즉시 처리 (대기 없음)
-                            this.clearPendingSingleTap();
+                        const tappedPhoto = this.checkPhotoClick(touch.clientX, touch.clientY, { openModal: false });
+                        if (tappedPhoto) {
+                            this.queueSingleTapAction(() => this.openPhotoViewModal(tappedPhoto.id));
                         } else {
-                            // 사진 클릭 확인
-                            const tappedPhoto = this.checkPhotoClick(touch.clientX, touch.clientY, { openModal: false });
-                            if (tappedPhoto) {
-                                this.queueSingleTapAction(() => this.openPhotoViewModal(tappedPhoto.id));
-                            } else {
-                                this.clearPendingSingleTap();
-                            }
+                            this.clearPendingSingleTap();
                         }
                     }
                 } else {
@@ -3470,84 +3274,8 @@ class DxfPhotoEditor {
             return;
         }
         
-        // 텍스트 클릭 확인 (우선 순위 높음)
-        const clickedText = this.checkTextClick(e.clientX, e.clientY);
-        if (clickedText) {
-            return;
-        }
-        
         // 사진 클릭 확인
         this.checkPhotoClick(e.clientX, e.clientY, { openModal: true });
-    }
-    
-    /**
-     * 텍스트 클릭 확인 (SVG 기반)
-     */
-    checkTextClick(clientX, clientY) {
-        // 스크린 좌표를 ViewBox 좌표로 변환
-        const viewCoords = this.screenToViewBox(clientX, clientY);
-        
-        // 텍스트 클릭 확인 (역순으로 - 나중에 추가된 것이 위에)
-        for (let i = this.texts.length - 1; i >= 0; i--) {
-            const textObj = this.texts[i];
-            
-            // 텍스트 크기 계산 (근사값)
-            const charWidth = textObj.fontSize * 0.6;
-            const textWidth = textObj.text.length * charWidth;
-            const padding = textObj.fontSize * 0.3;
-            
-            // 클릭 영역 (ViewBox 좌표계)
-            const left = textObj.x - textWidth / 2 - padding;
-            const right = textObj.x + textWidth / 2 + padding;
-            const top = textObj.y - textObj.fontSize / 2 - padding;
-            const bottom = textObj.y + textObj.fontSize / 2 + padding;
-            
-            // 클릭 위치가 텍스트 영역 안에 있는지 확인
-            if (viewCoords.x >= left && viewCoords.x <= right && 
-                viewCoords.y >= top && viewCoords.y <= bottom) {
-                console.log('📝 텍스트 클릭:', textObj.text);
-                this.openTextEditModal(textObj.id);
-                return textObj;
-            }
-        }
-        
-        return null;
-    }
-    
-    /**
-     * 텍스트 수정 모달 열기
-     */
-    openTextEditModal(textId) {
-        const textObj = this.texts.find(t => t.id === textId);
-        if (!textObj) return;
-        
-        this.selectedTextId = textId;
-        
-        const modal = document.getElementById('text-input-modal');
-        const textField = document.getElementById('text-input-field');
-        const deleteBtn = document.getElementById('text-delete-btn');
-        
-        if (!modal || !textField) {
-            console.error('❌ 텍스트 모달 요소를 찾을 수 없음!');
-            return;
-        }
-        
-        // 기존 텍스트 표시
-        textField.value = textObj.text;
-        modal.classList.add('active');
-        
-        // 삭제 버튼 표시 (수정 모드)
-        if (deleteBtn) {
-            deleteBtn.style.display = 'block';
-        }
-        
-        console.log('✅ 텍스트 수정 모달 표시됨:', textObj.text);
-        
-        // 포커스
-        setTimeout(() => {
-            textField.focus();
-            textField.select(); // 전체 선택
-        }, 100);
     }
     
     /**
