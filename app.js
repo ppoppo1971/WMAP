@@ -2224,32 +2224,10 @@ class DxfPhotoEditor {
             }
         });
         
-        // 사용자 텍스트를 나중에 추가 (위층에 표시)
-        this.texts.forEach(textObj => {
-            try {
-                const textElement = this.createUserTextElement(textObj);
-                if (textElement) {
-                    fragment.appendChild(textElement);
-                }
-            } catch (error) {
-                console.error('사용자 텍스트 렌더링 오류:', error);
-            }
-        });
-        
-        // 사진 마커를 마지막에 추가 (최상위 레이어)
-        this.photos.forEach(photo => {
-            try {
-                const markerElement = this.createPhotoMarkerElement(photo);
-                if (markerElement) {
-                    fragment.appendChild(markerElement);
-                }
-            } catch (error) {
-                console.error('사진 마커 렌더링 오류:', error);
-            }
-        });
-        
         this.svgGroup.appendChild(fragment);
         this.debugLog(`SVG 렌더링 완료: ${drawnCount}개 성공, ${errorCount}개 실패`);
+        
+        // 사진과 텍스트는 Canvas에서 그립니다 (drawPhotosCanvas에서 처리)
     }
     
     createSvgElement(entity) {
@@ -2610,9 +2588,26 @@ class DxfPhotoEditor {
     }
     
     drawPhotosCanvas() {
-        // 사진과 텍스트는 이제 SVG에서 그립니다 (drawDxf에서 처리)
-        // Canvas는 더 이상 사용하지 않음
-        this.debugLog('         🖼️ drawPhotosCanvas 건너뜀 (SVG 사용)');
+        this.debugLog('         🖼️ drawPhotosCanvas 시작');
+        // Canvas 초기화 (투명) - 한 번에 처리
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.debugLog('            Canvas 초기화 완료 (크기:', this.canvas.width, 'x', this.canvas.height, ')');
+        
+        // 사진과 텍스트가 없으면 빠르게 리턴
+        if (this.photos.length === 0 && this.texts.length === 0) {
+            this.debugLog('            사진/텍스트 없음 - 건너뜀');
+            return;
+        }
+        
+        // 사진 마커 그리기
+        this.debugLog('            사진 그리기 시작 (' + this.photos.length + '개)');
+        this.drawPhotos();
+        
+        // 텍스트 그리기
+        this.debugLog('            텍스트 그리기 시작 (' + this.texts.length + '개)');
+        this.drawTextsCanvas();
+        
+        this.debugLog('         ✅ drawPhotosCanvas 완료');
     }
     
     /**
@@ -2671,7 +2666,10 @@ class DxfPhotoEditor {
     }
     
     createPhotoMarkerElement(photo) {
-        if (!photo) return null;
+        if (!photo) {
+            console.warn('⚠️ createPhotoMarkerElement: photo가 null');
+            return null;
+        }
         
         // SVG 그룹 생성 (원 + 테두리)
         const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -2693,6 +2691,8 @@ class DxfPhotoEditor {
             markerRadius = this.viewBox.width * 0.003; // 2배 크기
         }
         
+        console.log(`  📍 사진 마커 생성: (${photo.x}, ${-photo.y}), r=${markerRadius}, color=${markerColor}`);
+        
         // 메인 원 (색상)
         const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', photo.x);
@@ -2710,13 +2710,106 @@ class DxfPhotoEditor {
         return group;
     }
     
-    // 기존 Canvas 렌더링 함수들은 제거됨 (SVG로 대체)
-    
     /**
-     * 사진 그리기 (이제 SVG에서 그리므로 빈 함수)
+     * 사진을 작은 점(●)으로 표시 (Canvas)
      */
     drawPhotos() {
-        // 사진 마커는 이제 SVG에서 그립니다 (drawDxf에서 처리)
+        const rect = this.getCachedRect();
+        this.debugLog('               📷 drawPhotos 실행 - 사진 개수:', this.photos.length);
+        
+        this.photos.forEach((photo, index) => {
+            // ViewBox 좌표 → 스크린 좌표 변환
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(photo.x, photo.y);
+            
+            // 화면 밖에 있으면 그리지 않음
+            if (screenX < -50 || screenX > rect.width + 50 || screenY < -50 || screenY > rect.height + 50) {
+                return;
+            }
+            
+            this.ctx.save();
+            
+            // 업로드 상태에 따른 색상 및 크기 결정
+            const isUploaded = photo.uploaded === true;
+            const hasMemo = photo.memo && photo.memo.trim();
+            
+            let markerColor;
+            let markerRadius;
+            
+            if (isUploaded) {
+                // 업로드 완료 → 빨간점 (작은 크기)
+                markerColor = hasMemo ? '#9B51E0' : '#FF0000'; // 보라색(메모) 또는 빨간색
+                markerRadius = 3.75; // 직경 7.5px (작음)
+            } else {
+                // 업로드 실패/대기 → 초록색 (2배 크기) - 사용자 알림
+                markerColor = '#00C853'; // 초록색 (주의 필요)
+                markerRadius = 7.5; // 직경 15px (2배 크기)
+            }
+            
+            // 원 그리기
+            this.ctx.fillStyle = markerColor;
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, markerRadius, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            // 테두리 (흰색, 더 잘 보이게)
+            this.ctx.strokeStyle = '#FFFFFF';
+            this.ctx.lineWidth = 2;
+            this.ctx.stroke();
+            
+            this.ctx.restore();
+        });
+        
+        this.debugLog('               ✅ drawPhotos 완료 - 총', this.photos.length, '개 그림');
+    }
+    
+    /**
+     * 텍스트를 Canvas에 그리기
+     */
+    drawTextsCanvas() {
+        const rect = this.getCachedRect();
+        this.debugLog('               📝 drawTextsCanvas 실행 - 텍스트 개수:', this.texts.length);
+        
+        this.texts.forEach((textObj, index) => {
+            // ViewBox 좌표 → 스크린 좌표 변환
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(textObj.x, textObj.y);
+            
+            // 화면 밖에 있으면 그리지 않음
+            if (screenX < -500 || screenX > rect.width + 500 || screenY < -500 || screenY > rect.height + 500) {
+                return;
+            }
+            
+            this.ctx.save();
+            
+            // 폰트 크기 계산 (ViewBox 좌표계를 화면 좌표로 변환)
+            const scale = rect.width / this.viewBox.width;
+            const screenFontSize = textObj.fontSize * scale;
+            
+            // 텍스트 배경 (흰색 사각형)
+            this.ctx.font = `bold ${screenFontSize}px Arial, sans-serif`;
+            const metrics = this.ctx.measureText(textObj.text);
+            const textWidth = metrics.width;
+            const textHeight = screenFontSize;
+            const padding = screenFontSize * 0.3;
+            
+            // 배경 그리기
+            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            this.ctx.fillRect(
+                screenX - textWidth / 2 - padding,
+                screenY - textHeight / 2 - padding,
+                textWidth + padding * 2,
+                textHeight + padding * 2
+            );
+            
+            // 텍스트 그리기 (빨간색)
+            this.ctx.fillStyle = '#FF3B30';
+            this.ctx.textAlign = 'center';
+            this.ctx.textBaseline = 'middle';
+            this.ctx.fillText(textObj.text, screenX, screenY);
+            
+            this.ctx.restore();
+        });
+        
+        this.debugLog('               ✅ drawTextsCanvas 완료 - 총', this.texts.length, '개 그림');
     }
     
     /**
