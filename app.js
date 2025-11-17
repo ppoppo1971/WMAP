@@ -2661,7 +2661,8 @@ class DxfPhotoEditor {
         rect.setAttribute('y', -textObj.y - textObj.fontSize / 2 - padding);
         rect.setAttribute('width', textWidth + padding * 2);
         rect.setAttribute('height', textObj.fontSize + padding * 2);
-        rect.setAttribute('fill', 'rgba(255, 255, 255, 0.9)');
+        rect.setAttribute('fill', '#FFFFFF'); // SVG는 rgba 직접 지원 안 함
+        rect.setAttribute('fill-opacity', '0.9'); // 투명도는 별도 속성
         rect.setAttribute('stroke', 'none');
         
         // 배경 먼저, 텍스트 나중에 추가 (텍스트가 위에)
