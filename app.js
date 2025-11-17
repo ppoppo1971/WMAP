@@ -739,6 +739,7 @@ class DxfPhotoEditor {
         // 텍스트 입력 모달
         const textCancelBtn = document.getElementById('text-cancel-btn');
         const textSaveBtn = document.getElementById('text-save-btn');
+        const textDeleteBtn = document.getElementById('text-delete-btn');
         
         if (textCancelBtn) {
             textCancelBtn.addEventListener('click', () => {
@@ -752,6 +753,15 @@ class DxfPhotoEditor {
                 console.log('💾 텍스트 저장 시도');
                 this.saveTextInput();
             });
+        }
+        
+        if (textDeleteBtn) {
+            textDeleteBtn.addEventListener('click', () => {
+                console.log('🗑️ 텍스트 삭제 시도');
+                this.deleteText();
+            });
+        } else {
+            console.warn('⚠️ text-delete-btn 버튼을 찾을 수 없습니다');
         }
         
         // 컨텍스트 메뉴 외부 클릭/터치 시 닫기
@@ -1092,6 +1102,7 @@ class DxfPhotoEditor {
         console.log('📝 텍스트 입력 모달 표시 시도...');
         const modal = document.getElementById('text-input-modal');
         const textField = document.getElementById('text-input-field');
+        const deleteBtn = document.getElementById('text-delete-btn');
         
         if (!modal) {
             console.error('❌ 텍스트 모달 요소를 찾을 수 없음!');
@@ -1105,6 +1116,12 @@ class DxfPhotoEditor {
         
         textField.value = '';
         modal.classList.add('active');
+        
+        // 삭제 버튼 숨김 (새 텍스트 추가 모드)
+        if (deleteBtn) {
+            deleteBtn.style.display = 'none';
+        }
+        
         console.log('✅ 텍스트 입력 모달 표시됨');
         
         // 포커스
@@ -1119,9 +1136,17 @@ class DxfPhotoEditor {
      */
     hideTextInputModal() {
         const modal = document.getElementById('text-input-modal');
+        const deleteBtn = document.getElementById('text-delete-btn');
+        
         if (modal) {
             modal.classList.remove('active');
         }
+        
+        // 삭제 버튼 숨김
+        if (deleteBtn) {
+            deleteBtn.style.display = 'none';
+        }
+        
         this.selectedTextId = null; // 초기화
     }
     
@@ -1166,6 +1191,42 @@ class DxfPhotoEditor {
         
         // Google Drive 자동 저장
         this.autoSave();
+    }
+    
+    /**
+     * 텍스트 삭제
+     */
+    deleteText() {
+        if (!this.selectedTextId) {
+            console.warn('⚠️ 선택된 텍스트가 없습니다');
+            return;
+        }
+        
+        // 확인 대화상자
+        if (!confirm('이 텍스트를 삭제하시겠습니까?')) {
+            return;
+        }
+        
+        // 텍스트 배열에서 삭제
+        const textIndex = this.texts.findIndex(t => t.id === this.selectedTextId);
+        if (textIndex !== -1) {
+            const deletedText = this.texts[textIndex];
+            this.texts.splice(textIndex, 1);
+            console.log('🗑️ 텍스트 삭제:', deletedText.text);
+            
+            this.metadataDirty = true;
+            this.selectedTextId = null;
+            
+            this.hideTextInputModal();
+            this.redraw();
+            
+            // Google Drive 자동 저장
+            this.autoSave();
+            
+            this.showToast('텍스트가 삭제되었습니다');
+        } else {
+            console.error('❌ 텍스트를 찾을 수 없습니다');
+        }
     }
     
     /**
@@ -2142,18 +2203,7 @@ class DxfPhotoEditor {
         let errorCount = 0;
         const fragment = document.createDocumentFragment();
         
-        // 사용자 텍스트를 먼저 추가 (DXF 객체보다 아래에 표시)
-        this.texts.forEach(textObj => {
-            try {
-                const textElement = this.createUserTextElement(textObj);
-                if (textElement) {
-                    fragment.appendChild(textElement);
-                }
-            } catch (error) {
-                console.error('사용자 텍스트 렌더링 오류:', error);
-            }
-        });
-        
+        // DXF 객체를 먼저 추가 (아래층)
         this.dxfData.entities.forEach((entity, index) => {
             try {
                 if (!entity || !entity.type) {
@@ -2171,6 +2221,18 @@ class DxfPhotoEditor {
                 if (errorCount <= 5) {
                     console.error(`엔티티 ${index} 렌더링 오류:`, error);
                 }
+            }
+        });
+        
+        // 사용자 텍스트를 나중에 추가 (위층에 표시)
+        this.texts.forEach(textObj => {
+            try {
+                const textElement = this.createUserTextElement(textObj);
+                if (textElement) {
+                    fragment.appendChild(textElement);
+                }
+            } catch (error) {
+                console.error('사용자 텍스트 렌더링 오류:', error);
             }
         });
         
@@ -3383,6 +3445,7 @@ class DxfPhotoEditor {
         
         const modal = document.getElementById('text-input-modal');
         const textField = document.getElementById('text-input-field');
+        const deleteBtn = document.getElementById('text-delete-btn');
         
         if (!modal || !textField) {
             console.error('❌ 텍스트 모달 요소를 찾을 수 없음!');
@@ -3392,6 +3455,11 @@ class DxfPhotoEditor {
         // 기존 텍스트 표시
         textField.value = textObj.text;
         modal.classList.add('active');
+        
+        // 삭제 버튼 표시 (수정 모드)
+        if (deleteBtn) {
+            deleteBtn.style.display = 'block';
+        }
         
         console.log('✅ 텍스트 수정 모달 표시됨:', textObj.text);
         
