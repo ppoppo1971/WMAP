@@ -531,7 +531,7 @@ class DxfPhotoEditor {
         // 슬라이딩 메뉴 - 목록으로 돌아가기
         const menuBackBtn = document.getElementById('menu-back-to-list');
         const menuFitViewBtn = document.getElementById('menu-fit-view');
-        const menuClearCacheBtn = document.getElementById('menu-clear-cache');
+        const menuConsoleBtn = document.getElementById('menu-console');
         
         menuBackBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -546,14 +546,24 @@ class DxfPhotoEditor {
             this.redraw();
         });
         
-        menuClearCacheBtn.addEventListener('click', async (e) => {
+        menuConsoleBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.closeSlideMenu();
-            await this.clearCacheAndReload();
+            // vConsole 토글
+            if (window.vConsole) {
+                const vcPanel = document.querySelector('.vc-panel');
+                if (vcPanel && vcPanel.classList.contains('vc-toggle')) {
+                    // 이미 열려있으면 닫기
+                    window.vConsole.hidePanel();
+                } else {
+                    // 닫혀있으면 열기
+                    window.vConsole.showPanel();
+                }
+            }
         });
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuClearCacheBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuConsoleBtn].forEach(btn => {
             btn.addEventListener('touchstart', (e) => {
                 e.stopPropagation();
             }, { passive: false });

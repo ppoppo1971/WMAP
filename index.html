@@ -299,19 +299,15 @@
             pointer-events: auto !important;
         }
 
-        /* 도면 파일명 표시 (중앙 상단) */
+        /* 도면 파일명 표시 (중앙 상단) - 간소화 */
         .file-name-display {
             position: fixed !important;
-            top: 20px !important;
+            top: 10px !important;
             left: 50% !important;
             transform: translateX(-50%) !important;
-            background: rgba(0, 0, 0, 0.75) !important;
-            color: white !important;
-            padding: 10px 20px !important;
-            border-radius: 20px !important;
-            font-size: 16px !important;
+            color: #007AFF !important;
+            font-size: 12px !important;
             font-weight: 600 !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
             z-index: 9997 !important;
             pointer-events: none !important;
             max-width: 80vw !important;
@@ -319,6 +315,7 @@
             white-space: nowrap !important;
             overflow: hidden !important;
             text-overflow: ellipsis !important;
+            text-shadow: 0 0 3px white, 0 0 5px white !important;
         }
 
         /* 햄버거 메뉴 (우측 상단) */
@@ -374,7 +371,7 @@
         .slide-menu-item {
             display: flex !important;
             align-items: center !important;
-            gap: 15px !important;
+            justify-content: flex-start !important;
             width: 100% !important;
             padding: 20px 25px !important;
             border: none !important;
@@ -393,10 +390,6 @@
 
         .slide-menu-item:active {
             background: #f0f0f0 !important;
-        }
-
-        .slide-menu-item span {
-            font-size: 22px !important;
         }
 
         /* 메뉴 배경 오버레이 */
@@ -772,6 +765,11 @@
             padding: 40px 20px;
             font-size: 15px;
         }
+        
+        /* vConsole 버튼 숨기기 (햄버거 메뉴로 이동) */
+        .vc-switch {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -779,7 +777,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택0224>
+                <h2>📁 DXF 도면 선택0237</h2>
             </div>
             
             <div class="file-list-actions">
@@ -828,13 +826,13 @@
     <!-- 슬라이딩 메뉴 (전역) -->
     <div class="slide-menu" id="slide-menu">
         <button class="slide-menu-item" id="menu-back-to-list">
-            <span>◀</span> 목록
+            목록
         </button>
         <button class="slide-menu-item" id="menu-fit-view">
-            <span>🔲</span> 전체보기
+            전체보기
         </button>
-        <button class="slide-menu-item" id="menu-clear-cache">
-            <span>🗑️</span> 캐시삭제
+        <button class="slide-menu-item" id="menu-console">
+            콘솔
         </button>
     </div>
 
