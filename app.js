@@ -2142,6 +2142,18 @@ class DxfPhotoEditor {
         let errorCount = 0;
         const fragment = document.createDocumentFragment();
         
+        // 사용자 텍스트를 먼저 추가 (DXF 객체보다 아래에 표시)
+        this.texts.forEach(textObj => {
+            try {
+                const textElement = this.createUserTextElement(textObj);
+                if (textElement) {
+                    fragment.appendChild(textElement);
+                }
+            } catch (error) {
+                console.error('사용자 텍스트 렌더링 오류:', error);
+            }
+        });
+        
         this.dxfData.entities.forEach((entity, index) => {
             try {
                 if (!entity || !entity.type) {
@@ -2547,35 +2559,57 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 텍스트 그리기 (최적화: rect 캐싱)
+     * 텍스트 그리기 (이제 SVG에서 그리므로 빈 함수)
      */
     drawTexts() {
-        this.texts.forEach(textObj => {
-            const rect = this.getCachedRect();
-            const { x, y } = this.viewToCanvasCoords(textObj.x, textObj.y);
-            const fontSize = (textObj.fontSize / this.viewBox.width) * rect.width;
-            
-            this.ctx.save();
-            
-            // 텍스트 스타일
-            this.ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
-            this.ctx.fillStyle = '#FF3B30'; // 빨간색 (잘 보이게)
-            this.ctx.textAlign = 'center';
-            this.ctx.textBaseline = 'middle';
-            
-            // 텍스트 배경 (가독성 향상)
-            const textWidth = this.ctx.measureText(textObj.text).width;
-            const padding = 5;
-            this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-            this.ctx.fillRect(x - textWidth / 2 - padding, y - fontSize / 2 - padding, 
-                             textWidth + padding * 2, fontSize + padding * 2);
-            
-            // 텍스트 그리기
-            this.ctx.fillStyle = '#FF3B30';
-            this.ctx.fillText(textObj.text, x, y);
-            
-            this.ctx.restore();
-        });
+        // 텍스트는 이제 SVG에서 그립니다 (drawDxf에서 처리)
+    }
+    
+    /**
+     * 사용자 텍스트를 SVG 요소로 생성
+     */
+    createUserTextElement(textObj) {
+        if (!textObj || !textObj.text) return null;
+        
+        // SVG 그룹 생성 (배경 + 텍스트)
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        
+        // 텍스트 배경 (흰색 사각형)
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        
+        // 텍스트 요소 생성
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', textObj.x);
+        text.setAttribute('y', -textObj.y); // Y축 반전
+        text.setAttribute('fill', '#FF3B30'); // 빨간색
+        text.setAttribute('font-family', 'Arial, sans-serif');
+        text.setAttribute('font-size', textObj.fontSize);
+        text.setAttribute('font-weight', 'bold');
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.textContent = textObj.text;
+        
+        // 텍스트 크기 계산 (근사값)
+        const charWidth = textObj.fontSize * 0.6; // 대략적인 문자 폭
+        const textWidth = textObj.text.length * charWidth;
+        const padding = textObj.fontSize * 0.3;
+        
+        // 배경 사각형 설정
+        rect.setAttribute('x', textObj.x - textWidth / 2 - padding);
+        rect.setAttribute('y', -textObj.y - textObj.fontSize / 2 - padding);
+        rect.setAttribute('width', textWidth + padding * 2);
+        rect.setAttribute('height', textObj.fontSize + padding * 2);
+        rect.setAttribute('fill', 'rgba(255, 255, 255, 0.9)');
+        rect.setAttribute('stroke', 'none');
+        
+        // 배경 먼저, 텍스트 나중에 추가 (텍스트가 위에)
+        group.appendChild(rect);
+        group.appendChild(text);
+        
+        // 텍스트 ID 저장 (클릭 감지용)
+        group.setAttribute('data-text-id', textObj.id);
+        
+        return group;
     }
     
     // 기존 Canvas 렌더링 함수들은 제거됨 (SVG로 대체)
@@ -3106,11 +3140,19 @@ class DxfPhotoEditor {
                     if (doubled) {
                         this.clearPendingSingleTap();
                     } else {
-                        const tappedPhoto = this.checkPhotoClick(touch.clientX, touch.clientY, { openModal: false });
-                        if (tappedPhoto) {
-                            this.queueSingleTapAction(() => this.openPhotoViewModal(tappedPhoto.id));
-                        } else {
+                        // 텍스트 클릭 확인 (우선 순위 높음)
+                        const tappedText = this.checkTextClick(touch.clientX, touch.clientY);
+                        if (tappedText) {
+                            // 텍스트 클릭 시 즉시 처리 (대기 없음)
                             this.clearPendingSingleTap();
+                        } else {
+                            // 사진 클릭 확인
+                            const tappedPhoto = this.checkPhotoClick(touch.clientX, touch.clientY, { openModal: false });
+                            if (tappedPhoto) {
+                                this.queueSingleTapAction(() => this.openPhotoViewModal(tappedPhoto.id));
+                            } else {
+                                this.clearPendingSingleTap();
+                            }
                         }
                     }
                 } else {
@@ -3297,36 +3339,30 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 텍스트 클릭 확인
+     * 텍스트 클릭 확인 (SVG 기반)
      */
     checkTextClick(clientX, clientY) {
-        const rect = this.getCachedRect();
-        const clickX = clientX - rect.left;
-        const clickY = clientY - rect.top;
+        // 스크린 좌표를 ViewBox 좌표로 변환
+        const viewCoords = this.screenToViewBox(clientX, clientY);
         
         // 텍스트 클릭 확인 (역순으로 - 나중에 추가된 것이 위에)
         for (let i = this.texts.length - 1; i >= 0; i--) {
             const textObj = this.texts[i];
             
-            // 텍스트 위치 계산
-            const { x: screenX, y: screenY } = this.viewToCanvasCoords(textObj.x, textObj.y);
-            const fontSize = (textObj.fontSize / this.viewBox.width) * rect.width;
+            // 텍스트 크기 계산 (근사값)
+            const charWidth = textObj.fontSize * 0.6;
+            const textWidth = textObj.text.length * charWidth;
+            const padding = textObj.fontSize * 0.3;
             
-            // 텍스트 크기 계산
-            this.ctx.save();
-            this.ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
-            const textWidth = this.ctx.measureText(textObj.text).width;
-            this.ctx.restore();
-            
-            // 클릭 영역 (텍스트 박스 + 여유 공간)
-            const padding = 10;
-            const left = screenX - textWidth / 2 - padding;
-            const right = screenX + textWidth / 2 + padding;
-            const top = screenY - fontSize / 2 - padding;
-            const bottom = screenY + fontSize / 2 + padding;
+            // 클릭 영역 (ViewBox 좌표계)
+            const left = textObj.x - textWidth / 2 - padding;
+            const right = textObj.x + textWidth / 2 + padding;
+            const top = textObj.y - textObj.fontSize / 2 - padding;
+            const bottom = textObj.y + textObj.fontSize / 2 + padding;
             
             // 클릭 위치가 텍스트 영역 안에 있는지 확인
-            if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) {
+            if (viewCoords.x >= left && viewCoords.x <= right && 
+                viewCoords.y >= top && viewCoords.y <= bottom) {
                 console.log('📝 텍스트 클릭:', textObj.text);
                 this.openTextEditModal(textObj.id);
                 return textObj;
