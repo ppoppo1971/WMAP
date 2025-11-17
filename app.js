@@ -834,13 +834,11 @@ class DxfPhotoEditor {
         this.longPressPosition.screenX = clientX;
         this.longPressPosition.screenY = clientY;
         
-        // ViewBox 좌표로 변환
-        const rect = this.svg.getBoundingClientRect();
-        const svgX = ((clientX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
-        const svgY = ((clientY - rect.top) / rect.height) * this.viewBox.height + this.viewBox.y;
+        // ViewBox 좌표로 변환 (screenToViewBox 사용으로 정확도 향상)
+        const viewCoords = this.screenToViewBox(clientX, clientY);
         
-        this.longPressPosition.x = svgX;
-        this.longPressPosition.y = svgY;
+        this.longPressPosition.x = viewCoords.x;
+        this.longPressPosition.y = viewCoords.y;
         
         // 타이머 시작
         this.longPressTimer = setTimeout(() => {
