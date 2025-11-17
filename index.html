@@ -829,7 +829,10 @@
         
         /* vConsole 버튼 숨기기 (햄버거 메뉴로 이동) */
         .vc-switch {
-            display: none !important;
+            visibility: hidden !important;
+            pointer-events: none !important;
+            position: fixed !important;
+            bottom: -100px !important;
         }
     </style>
 </head>

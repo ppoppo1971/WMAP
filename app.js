@@ -555,24 +555,17 @@ class DxfPhotoEditor {
             e.stopPropagation();
             this.closeSlideMenu();
             
-            if (!window.vConsole) {
-                console.warn('⚠️ vConsole 인스턴스를 찾을 수 없습니다');
-                this.showToast('vConsole을 사용할 수 없습니다.');
-                return;
-            }
-
-            const panel = document.querySelector('.vc-panel');
-            const isVisible = panel && !panel.classList.contains('vc-hide');
-            const canShow = typeof window.vConsole.show === 'function';
-            const canHide = typeof window.vConsole.hide === 'function';
-
-            if (isVisible && canHide) {
-                window.vConsole.hide();
-            } else if (canShow) {
-                window.vConsole.show();
-            } else {
-                console.warn('⚠️ vConsole.show/hide 메서드를 찾을 수 없습니다');
-            }
+            // vConsole 버튼을 프로그래밍 방식으로 클릭
+            setTimeout(() => {
+                const vcBtn = document.querySelector('.vc-switch');
+                if (vcBtn) {
+                    console.log('🔍 vConsole 버튼 클릭 시뮬레이션');
+                    vcBtn.click();
+                } else {
+                    console.warn('⚠️ vConsole 버튼(.vc-switch)을 찾을 수 없습니다');
+                    this.showToast('vConsole을 사용할 수 없습니다.');
+                }
+            }, 100);
         });
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
