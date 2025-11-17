@@ -85,7 +85,10 @@ class DxfPhotoEditor {
         
         // 블록 삽입점 스냅 관련
         this.blockInsertionPoints = []; // 블록 삽입점 캐시 { x, y, blockName }
-        this.snapDistance = 2.0; // 도면 단위 2m 이내
+        this.snapDistance = 2.0; // 도면 단위 기본 2m 이내
+        this.snapDistanceRatio = 0.02; // ViewBox 폭의 2% (축척 대응)
+        this.snapPreviewMarkers = []; // 스냅 가능한 블록 시각적 표시용
+        this.nearestSnapPoint = null; // 현재 가장 가까운 스냅 포인트
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -895,6 +898,9 @@ class DxfPhotoEditor {
             navigator.vibrate(50);
         }
         
+        // 스냅 미리보기 그리기
+        this.drawSnapPreview(this.longPressPosition.x, this.longPressPosition.y);
+        
         // 컨텍스트 메뉴 표시
         this.showContextMenu(this.longPressPosition.screenX, this.longPressPosition.screenY);
     }
@@ -1053,6 +1059,10 @@ class DxfPhotoEditor {
         if (contextMenu) {
             contextMenu.classList.remove('active');
         }
+        
+        // 스냅 미리보기 지우기
+        this.nearestSnapPoint = null;
+        this.redraw();
     }
     
     /**
@@ -2108,11 +2118,24 @@ class DxfPhotoEditor {
      */
     findNearestBlockInsertionPoint(x, y) {
         if (this.blockInsertionPoints.length === 0) {
+            console.log('❌ 수집된 블록 삽입점이 없습니다');
             return null;
         }
         
+        // 축척 대응: ViewBox 크기에 비례한 동적 스냅 거리
+        const dynamicSnapDistance = this.viewBox.width * this.snapDistanceRatio;
+        const effectiveSnapDistance = Math.max(dynamicSnapDistance, this.snapDistance);
+        
+        console.log(`📍 블록 검색 시작 - 롱프레스 위치: (${x.toFixed(2)}, ${y.toFixed(2)})`);
+        console.log(`   ViewBox 폭: ${this.viewBox.width.toFixed(2)}`);
+        console.log(`   동적 스냅 거리: ${dynamicSnapDistance.toFixed(3)} (ViewBox의 ${(this.snapDistanceRatio*100)}%)`);
+        console.log(`   최소 스냅 거리: ${this.snapDistance}`);
+        console.log(`   → 적용 스냅 거리: ${effectiveSnapDistance.toFixed(3)}`);
+        console.log(`   총 블록 개수: ${this.blockInsertionPoints.length}개`);
+        
         let nearest = null;
-        let minDistance = this.snapDistance;
+        let minDistance = Infinity;
+        const snapCandidates = [];
         
         for (const point of this.blockInsertionPoints) {
             const distance = Math.sqrt(
@@ -2120,17 +2143,102 @@ class DxfPhotoEditor {
                 Math.pow(point.y - y, 2)
             );
             
+            // 스냅 거리 이내의 모든 블록 기록 (디버깅용)
+            if (distance <= effectiveSnapDistance) {
+                snapCandidates.push({
+                    blockName: point.blockName,
+                    distance: distance.toFixed(3),
+                    position: `(${point.x.toFixed(2)}, ${point.y.toFixed(2)})`
+                });
+            }
+            
             if (distance < minDistance) {
                 minDistance = distance;
-                nearest = point;
+                nearest = { ...point, distance };
             }
         }
         
-        if (nearest) {
-            console.log(`🎯 스냅: "${nearest.blockName}" 블록 삽입점 (거리: ${minDistance.toFixed(3)}m)`);
+        console.log(`   가장 가까운 블록: "${nearest?.blockName}" 거리: ${minDistance.toFixed(3)}`);
+        console.log(`   ${effectiveSnapDistance.toFixed(3)} 이내 블록들:`, snapCandidates);
+        
+        if (nearest && minDistance <= effectiveSnapDistance) {
+            console.log(`🎯 스냅 성공: "${nearest.blockName}" (거리: ${minDistance.toFixed(3)})`);
+            this.nearestSnapPoint = nearest;
+            return nearest;
+        } else {
+            console.log(`❌ 스냅 실패: ${effectiveSnapDistance.toFixed(3)} 이내에 블록 없음 (최단거리: ${minDistance.toFixed(3)})`);
+            this.nearestSnapPoint = null;
+            return null;
+        }
+    }
+    
+    /**
+     * 스냅 가능한 블록들을 Canvas에 표시 (시각적 피드백)
+     */
+    drawSnapPreview(longPressX, longPressY) {
+        if (this.blockInsertionPoints.length === 0) return;
+        
+        const rect = this.getCachedRect();
+        const dynamicSnapDistance = this.viewBox.width * this.snapDistanceRatio;
+        const effectiveSnapDistance = Math.max(dynamicSnapDistance, this.snapDistance);
+        
+        this.ctx.save();
+        
+        // 스냅 거리 이내의 모든 블록 표시
+        this.blockInsertionPoints.forEach(point => {
+            const distance = Math.sqrt(
+                Math.pow(point.x - longPressX, 2) + 
+                Math.pow(point.y - longPressY, 2)
+            );
+            
+            if (distance <= effectiveSnapDistance) {
+                const { x: screenX, y: screenY } = this.viewToCanvasCoords(point.x, point.y);
+                
+                // 스냅 가능 범위를 원으로 표시 (노란색)
+                this.ctx.strokeStyle = 'rgba(255, 200, 0, 0.5)';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.arc(screenX, screenY, 15, 0, Math.PI * 2);
+                this.ctx.stroke();
+                
+                // 중심점 표시 (빨간색 십자)
+                this.ctx.strokeStyle = '#FF0000';
+                this.ctx.lineWidth = 2;
+                this.ctx.beginPath();
+                this.ctx.moveTo(screenX - 8, screenY);
+                this.ctx.lineTo(screenX + 8, screenY);
+                this.ctx.moveTo(screenX, screenY - 8);
+                this.ctx.lineTo(screenX, screenY + 8);
+                this.ctx.stroke();
+                
+                // 블록 이름 표시
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.font = 'bold 12px Arial';
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(point.blockName, screenX, screenY - 20);
+                
+                // 거리 표시
+                this.ctx.fillStyle = '#666';
+                this.ctx.font = '10px Arial';
+                this.ctx.fillText(`${distance.toFixed(2)}m`, screenX, screenY + 25);
+            }
+        });
+        
+        // 가장 가까운 블록을 더 강조 (녹색)
+        if (this.nearestSnapPoint) {
+            const { x: screenX, y: screenY } = this.viewToCanvasCoords(
+                this.nearestSnapPoint.x, 
+                this.nearestSnapPoint.y
+            );
+            
+            this.ctx.strokeStyle = '#00FF00';
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, 20, 0, Math.PI * 2);
+            this.ctx.stroke();
         }
         
-        return nearest;
+        this.ctx.restore();
     }
     
     drawDxfSvg() {
