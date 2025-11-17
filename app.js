@@ -53,7 +53,7 @@ class DxfPhotoEditor {
         };
         
         this.selectedPhotoId = null;
-        this.selectedTextId = null; // 선택된 텍스트 ID
+        this.selectedTextId = null; // 선택된 텍스트 ID (수정용)
         
         // 사진 그룹 관리 (동일 좌표의 여러 사진)
         this.currentPhotoGroup = []; // 현재 보고 있는 좌표의 사진 ID 배열
@@ -1152,7 +1152,7 @@ class DxfPhotoEditor {
                 x: this.longPressPosition.x,
                 y: this.longPressPosition.y,
                 text: text,
-                fontSize: this.viewBox.width * 0.006 // ViewBox 크기의 0.6% (기존 2%의 30%)
+                fontSize: this.viewBox.width * 0.02 // ViewBox 크기의 2%
             };
             
             this.texts.push(textObj);

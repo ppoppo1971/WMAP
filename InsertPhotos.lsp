@@ -7,8 +7,7 @@
                          photo-count text-count i j fileName x y width height memo photo-path
                          insert-pt scale text-pt text-height dxf-y scr-file scr-content
                          texts-start texts-end texts-content
-                         text-x text-y text-content text-fontsize text-dxf-y
-                         photo-coords coord-counts is-duplicate k coord-key)
+                         text-x text-y text-content text-fontsize text-dxf-y)
   
   (princ "\n========================================")
   (princ "\n웹앱 사진/메모 자동 삽입 시작")
@@ -69,55 +68,10 @@
               ;; SCR 파일 내용 생성
               (setq scr-content "")
               
-              ;; 1단계: 중복 사진 감지 (같은 좌표에 여러 사진)
-              (setq photo-coords '())
-              (setq coord-counts '())
-              
+              ;; 각 사진 처리
               (if (> photo-count 0)
                 (progn
-                  (princ "\n🔍 중복 사진 감지 중...\n")
-                  (setq k 0)
-                  (while (< k photo-count)
-                    (setq x (atof (get-json-value content "\"x\"" k)))
-                    (setq y (atof (get-json-value content "\"y\"" k)))
-                    (setq coord-key (strcat (rtos x 2 2) "," (rtos y 2 2)))
-                    
-                    ;; 좌표 목록에 추가
-                    (setq photo-coords (cons (list x y) photo-coords))
-                    
-                    ;; 좌표별 개수 세기
-                    (if (assoc coord-key coord-counts)
-                      (setq coord-counts 
-                        (subst (cons coord-key (1+ (cdr (assoc coord-key coord-counts))))
-                               (assoc coord-key coord-counts)
-                               coord-counts))
-                      (setq coord-counts (cons (cons coord-key 1) coord-counts))
-                    )
-                    
-                    (setq k (+ k 1))
-                  )
-                  
-                  ;; 중복 좌표 출력
-                  (setq k 0)
-                  (foreach coord-pair coord-counts
-                    (if (> (cdr coord-pair) 1)
-                      (progn
-                        (princ (strcat "\n   🟡 좌표 " (car coord-pair) ": " (itoa (cdr coord-pair)) "개 사진"))
-                        (setq k (+ k 1))
-                      )
-                    )
-                  )
-                  (if (> k 0)
-                    (princ (strcat "\n   → 총 " (itoa k) "개 위치에 중복 사진 발견"))
-                    (princ "\n   → 중복 사진 없음")
-                  )
-                )
-              )
-              
-              ;; 2단계: 각 사진 처리
-              (if (> photo-count 0)
-                (progn
-                  (princ "\n\n📸 사진 삽입...\n")
+                  (princ "\n📸 사진 삽입...\n")
                   (setq i 0)
                   (while (< i photo-count)
                 (princ (strcat "\n   [" (itoa (+ i 1)) "/" (itoa photo-count) "] "))
@@ -135,14 +89,6 @@
                 ;; Y축 좌표 역변환
                 (setq dxf-y (- y))
                 (princ (strcat "\n       DXF 좌표: (" (rtos x 2 2) ", " (rtos dxf-y 2 2) ")"))
-                
-                ;; 중복 여부 확인
-                (setq coord-key (strcat (rtos x 2 2) "," (rtos y 2 2)))
-                (setq is-duplicate (> (cdr (assoc coord-key coord-counts)) 1))
-                
-                (if is-duplicate
-                  (princ " 🟡중복")
-                )
                 
                 ;; 파일 경로
                 (setq photo-path (strcat dwg-path fileName))
@@ -168,27 +114,6 @@
                               (rtos x 2 6) "," (rtos dxf-y 2 6) "\n"
                               "0.3\n"  ; 스케일 고정값 0.3
                               "0\n"  ; 회전각 0
-                      )
-                    )
-                    
-                    ;; 중복 사진이면 노란색 원 추가
-                    (if is-duplicate
-                      (progn
-                        (princ "\n       🟡 노란색 원 추가 (중복 표시)")
-                        (setq scr-content
-                          (strcat scr-content
-                                  "CIRCLE\n"
-                                  (rtos x 2 6) "," (rtos dxf-y 2 6) "\n"
-                                  "2\n"  ; 반지름 2 (사진보다 크게)
-                                  "-PROPERTIES\n"
-                                  "L\n"  ; Last (방금 그린 원)
-                                  "\n"
-                                  "Color\n"
-                                  "2\n"  ; 2 = 노란색 (Yellow)
-                                  "\n"
-                                  "\n"
-                          )
-                        )
                       )
                     )
                     
