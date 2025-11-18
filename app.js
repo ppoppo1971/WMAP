@@ -2687,7 +2687,9 @@ class DxfPhotoEditor {
         this.texts.forEach(textObj => {
             const rect = this.getCachedRect();
             const { x, y } = this.viewToCanvasCoords(textObj.x, textObj.y);
-            const fontSize = (textObj.fontSize / this.viewBox.width) * rect.width;
+            
+            // 고정 크기: 18px (중간 크기, 줌과 무관하게 일정)
+            const fontSize = 18;
             
             this.ctx.save();
             
