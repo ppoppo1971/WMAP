@@ -551,49 +551,92 @@ class DxfPhotoEditor {
         const menuCheckMissingBtn = document.getElementById('menu-check-missing');
         const menuConsoleBtn = document.getElementById('menu-console');
         
-        menuBackBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.closeSlideMenu();
-            this.showFileList();
+        console.log('🔍 슬라이딩 메뉴 버튼 확인:', {
+            menuBackBtn: !!menuBackBtn,
+            menuFitViewBtn: !!menuFitViewBtn,
+            menuCheckMissingBtn: !!menuCheckMissingBtn,
+            menuConsoleBtn: !!menuConsoleBtn
         });
         
-        menuFitViewBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.closeSlideMenu();
-            this.fitDxfToView();
-            this.redraw();
-        });
+        if (menuBackBtn) {
+            menuBackBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeSlideMenu();
+                this.showFileList();
+            });
+        }
         
-        menuCheckMissingBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.closeSlideMenu();
-            this.checkMissingPhotos();
-        });
+        if (menuFitViewBtn) {
+            menuFitViewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.closeSlideMenu();
+                this.fitDxfToView();
+                this.redraw();
+            });
+        }
         
-        menuConsoleBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.closeSlideMenu();
-            // vConsole 토글
-            if (window.vConsole) {
-                const vcPanel = document.querySelector('.vc-panel');
-                if (vcPanel && vcPanel.classList.contains('vc-toggle')) {
-                    // 이미 열려있으면 닫기
-                    window.vConsole.hidePanel();
+        if (menuCheckMissingBtn) {
+            menuCheckMissingBtn.addEventListener('click', (e) => {
+                console.log('✅ 사진누락확인 버튼 클릭됨!');
+                e.stopPropagation();
+                this.closeSlideMenu();
+                this.checkMissingPhotos();
+            });
+        } else {
+            console.error('❌ menu-check-missing 버튼을 찾을 수 없습니다!');
+        }
+        
+        if (menuConsoleBtn) {
+            menuConsoleBtn.addEventListener('click', (e) => {
+                console.log('✅ 콘솔 버튼 클릭됨!');
+                e.stopPropagation();
+                this.closeSlideMenu();
+                
+                // vConsole 토글 - 스위치 버튼을 클릭하는 방식으로 토글
+                const vcSwitch = document.querySelector('.vc-switch');
+                
+                if (vcSwitch) {
+                    // vConsole의 스위치 버튼을 클릭하여 토글
+                    vcSwitch.click();
+                    console.log('📱 vConsole 토글됨 (스위치 버튼 클릭)');
                 } else {
-                    // 닫혀있으면 열기
-                    window.vConsole.showPanel();
+                    // 스위치 버튼이 없으면 직접 API 사용
+                    const vc = window.vConsole || (typeof vConsole !== 'undefined' ? vConsole : null);
+                    
+                    if (vc) {
+                        // vConsole 패널이 열려있는지 확인
+                        const vcPanel = document.querySelector('.vc-panel');
+                        const isOpen = vcPanel && 
+                                       vcPanel.offsetParent !== null && 
+                                       vcPanel.style.display !== 'none';
+                        
+                        if (isOpen) {
+                            vc.hide();
+                            console.log('📱 vConsole 닫힘 (API)');
+                        } else {
+                            vc.show();
+                            console.log('📱 vConsole 열림 (API)');
+                        }
+                    } else {
+                        console.warn('⚠️ vConsole이 초기화되지 않았습니다');
+                        console.log('window.vConsole:', typeof window.vConsole, window.vConsole);
+                    }
                 }
-            }
-        });
+            });
+        } else {
+            console.error('❌ menu-console 버튼을 찾을 수 없습니다!');
+        }
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
         [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuConsoleBtn].forEach(btn => {
-            btn.addEventListener('touchstart', (e) => {
-                e.stopPropagation();
-            }, { passive: false });
-            btn.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-            });
+            if (btn) {
+                btn.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                }, { passive: false });
+                btn.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                });
+            }
         });
         
         // 사진 추가 버튼 제거 (롱프레스로만 추가)

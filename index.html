@@ -1105,6 +1105,9 @@ DMAP - DXF 도면 사진 편집기 (UI)
             }
         });
         
+        // window 객체에 명시적으로 할당 (app.js에서 접근 가능하도록)
+        window.vConsole = vConsole;
+        
         // vConsole 버튼 스타일 커스터마이징 (선택사항)
         setTimeout(() => {
             const vcBtn = document.querySelector('.vc-switch');
