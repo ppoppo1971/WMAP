@@ -554,18 +554,17 @@ class DxfPhotoEditor {
         menuConsoleBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.closeSlideMenu();
-            
-            // vConsole 버튼을 프로그래밍 방식으로 클릭
-            setTimeout(() => {
-                const vcBtn = document.querySelector('.vc-switch');
-                if (vcBtn) {
-                    console.log('🔍 vConsole 버튼 클릭 시뮬레이션');
-                    vcBtn.click();
+            // vConsole 토글
+            if (window.vConsole) {
+                const vcPanel = document.querySelector('.vc-panel');
+                if (vcPanel && vcPanel.classList.contains('vc-toggle')) {
+                    // 이미 열려있으면 닫기
+                    window.vConsole.hidePanel();
                 } else {
-                    console.warn('⚠️ vConsole 버튼(.vc-switch)을 찾을 수 없습니다');
-                    this.showToast('vConsole을 사용할 수 없습니다.');
+                    // 닫혀있으면 열기
+                    window.vConsole.showPanel();
                 }
-            }, 100);
+            }
         });
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
@@ -3499,7 +3498,7 @@ class DxfPhotoEditor {
         
         const photoImageEl = document.getElementById('photo-view-image');
         if (photoImageEl) {
-            photoImageEl.src = '';
+            photoImageEl.removeAttribute('src');
         }
         
         let imageData = photo.imageData;
@@ -3634,7 +3633,7 @@ class DxfPhotoEditor {
         }
         const photoImageEl = document.getElementById('photo-view-image');
         if (photoImageEl && this.tempFetchedPhotoData) {
-            photoImageEl.src = '';
+            photoImageEl.removeAttribute('src');
         }
         this.tempFetchedPhotoData = null;
         this.selectedPhotoId = null;
