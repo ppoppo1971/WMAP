@@ -2545,14 +2545,20 @@ class DxfPhotoEditor {
         const actualWidth = Math.max(lineweight >= 0 ? lineweight : 0, constantWidth);
         const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
         
-        // 디버그: 첫 30개 로그 (더 많이 출력)
+        // 디버그: 첫 30개 로그 + .F턱낮춤 레이어는 모두 로그
         if (!this._polylineWeightDebugCount) this._polylineWeightDebugCount = 0;
-        if (this._polylineWeightDebugCount < 30) {
+        const isTargetLayer = entity.layer && entity.layer.includes('턱낮춤');
+        if (this._polylineWeightDebugCount < 30 || isTargetLayer) {
             console.log(`📏 POLYLINE [${this._polylineWeightDebugCount}] layer="${entity.layer}"`);
             console.log(`   lineweight=${entity.lineweight} (타입: ${typeof entity.lineweight}, 존재: ${'lineweight' in entity})`);
             console.log(`   constantWidth=${entity.constantWidth} (타입: ${typeof entity.constantWidth}, 존재: ${'constantWidth' in entity})`);
             console.log(`   계산: lineweight=${lineweight}, constantWidth=${constantWidth}, actualWidth=${actualWidth} → strokeWidth=${strokeWidth}px`);
-            this._polylineWeightDebugCount++;
+            if (isTargetLayer) {
+                console.log(`   ⚠️ .F턱낮춤 레이어 감지! 실제 DOM stroke-width: ${strokeWidth}px`);
+            }
+            if (!isTargetLayer) {
+                this._polylineWeightDebugCount++;
+            }
         }
         
         // 디버그용 데이터 속성 추가
