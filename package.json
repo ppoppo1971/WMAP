@@ -7,8 +7,7 @@
     "copy-libs": "node copy-libs.js"
   },
   "dependencies": {
-    "dxf-parser": "^1.2.1",
-    "jszip": "^3.10.1"
+    "dxf-parser": "^1.2.1"
   }
 }
 

@@ -1,4 +1,23 @@
-// 라이브러리 파일을 node_modules에서 복사하는 스크립트
+/**
+ * ========================================
+ * DMAP - 라이브러리 복사 스크립트
+ * ========================================
+ * 
+ * 용도:
+ *   - npm 패키지에서 필요한 라이브러리를 libs 폴더로 복사
+ *   - GitHub Pages 배포를 위한 로컬 파일 준비
+ * 
+ * 실행:
+ *   npm run copy-libs
+ * 
+ * 복사 대상:
+ *   - dxf-parser: DXF 파일 파싱 라이브러리
+ * 
+ * 버전: 1.0.0
+ * 최종 수정: 2025-11-18
+ * ========================================
+ */
+
 const fs = require('fs');
 const path = require('path');
 
@@ -25,15 +44,9 @@ function copyFile(source, dest) {
 const dxfParserSource = path.join(__dirname, 'node_modules', 'dxf-parser', 'dist', 'dxf-parser.min.js');
 const dxfParserDest = path.join(libsDir, 'dxf-parser.min.js');
 
-// JSZip 복사
-const jszipSource = path.join(__dirname, 'node_modules', 'jszip', 'dist', 'jszip.min.js');
-const jszipDest = path.join(libsDir, 'jszip.min.js');
-
 console.log('\n📦 라이브러리 복사 시작...\n');
 
-let success = true;
-success = copyFile(dxfParserSource, dxfParserDest) && success;
-success = copyFile(jszipSource, jszipDest) && success;
+let success = copyFile(dxfParserSource, dxfParserDest);
 
 if (success) {
     console.log('\n✅ 모든 라이브러리 복사 완료!');

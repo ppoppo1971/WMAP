@@ -1,4 +1,32 @@
 <!DOCTYPE html>
+<!--
+========================================
+DMAP - DXF 도면 사진 편집기 (UI)
+========================================
+
+용도:
+  - iPhone 13 PRO 최적화 PWA
+  - DXF 도면 뷰잉 및 사진/텍스트 삽입
+  - Google Drive 실시간 동기화
+
+주요 UI 컴포넌트:
+  1. 파일 선택 화면 (Google Drive / 로컬)
+  2. 도면 뷰어 화면 (SVG + Canvas)
+  3. 햄버거 메뉴 (슬라이딩)
+  4. 롱프레스 컨텍스트 메뉴
+  5. 사진 보기 모달
+  6. 텍스트 입력 모달
+
+최적화:
+  - touch-action: none (터치 제스처 직접 제어)
+  - will-change: transform (GPU 가속)
+  - vector-effect: non-scaling-stroke (SVG 선 굵기 고정)
+  - vConsole 디버깅 콘솔 내장
+
+버전: 1.0.0 (0353)
+최종 수정: 2025-11-18
+========================================
+-->
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -123,7 +151,7 @@
         #svg ellipse,
         #svg path,
         #svg polygon {
-            stroke-width: 0.6 !important;
+            stroke-width: 0.3 !important;
             vector-effect: non-scaling-stroke !important;
         }
         
@@ -134,13 +162,13 @@
         
         #svg line,
         #svg polyline {
-            stroke-width: 0.6 !important; /* 선들은 모두 0.6 */
+            stroke-width: 0.3 !important; /* 선들은 모두 0.3 */
         }
         
         #svg circle[fill="none"],
         #svg ellipse[fill="none"],
         #svg path[fill="none"] {
-            stroke-width: 0.6 !important; /* 채우기 없는 도형도 0.6 */
+            stroke-width: 0.3 !important; /* 채우기 없는 도형도 0.3 */
         }
         
         /* POINT는 매우 작게 */
@@ -829,10 +857,7 @@
         
         /* vConsole 버튼 숨기기 (햄버거 메뉴로 이동) */
         .vc-switch {
-            visibility: hidden !important;
-            pointer-events: none !important;
-            position: fixed !important;
-            bottom: -100px !important;
+            display: none !important;
         }
     </style>
 </head>
@@ -841,7 +866,7 @@
         <!-- 파일 선택 화면 -->
         <div id="file-list-screen" class="screen">
             <div class="screen-header">
-                <h2>📁 DXF 도면 선택 0545</h2>
+                <h2>📁 DXF 도면 선택 0353</h2>
             </div>
             
             <div class="file-list-actions">

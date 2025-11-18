@@ -1,12 +1,45 @@
+/**
+ * ========================================
+ * DMAP - DXF 도면 사진 편집기 (메인 앱)
+ * ========================================
+ * 
+ * 용도:
+ *   - iPhone 13 PRO에서 DXF 도면을 뷰잉하고 현장 사진/텍스트를 삽입하는 PWA
+ *   - Google Drive 연동으로 실시간 자동 저장
+ *   - 데스크톱 AutoCAD에서 InsertPhotos.lsp로 사진/텍스트 불러오기
+ * 
+ * 주요 기능:
+ *   1. DXF 파일 파싱 및 SVG 렌더링
+ *   2. 터치 제스처 (팬/줌/롱프레스/더블탭)
+ *   3. 사진 추가/삭제/메모 작성
+ *   4. 텍스트 입력/편집
+ *   5. Google Drive 자동 동기화
+ *   6. 메타데이터 JSON 관리
+ * 
+ * 최적화:
+ *   - requestAnimationFrame으로 부드러운 렌더링
+ *   - getBoundingClientRect() 캐싱 (100ms)
+ *   - 중복 렌더링 방지 (pending 플래그)
+ *   - 이미지 메모리 명시적 정리
+ *   - debugMode로 선택적 로깅
+ * 
+ * 버전: 1.0.0
+ * 최종 수정: 2025-11-18
+ * ========================================
+ */
+
 // 라이브러리 로드 확인
 if (typeof DxfParser === 'undefined') {
     console.error('DxfParser 라이브러리가 로드되지 않았습니다!');
     console.error('CDN 연결을 확인하세요: https://unpkg.com/dxf-parser@1.2.1/dist/dxf-parser.min.js');
 }
 
-// JSZip 제거: Google Drive 자동 저장으로 대체
-
-// DXF 도면 편집기 앱
+/**
+ * DXF 도면 편집기 메인 클래스
+ * - 모든 UI/기능/상태 관리
+ * - Google Drive 연동
+ * - 터치 제스처 처리
+ */
 class DxfPhotoEditor {
     constructor() {
         // 화면 요소
@@ -14,11 +47,7 @@ class DxfPhotoEditor {
         this.viewerScreen = document.getElementById('viewer-screen');
         this.viewerUI = document.getElementById('viewer-ui');
         
-        console.log('📱 요소 확인:', {
-            fileListScreen: !!this.fileListScreen,
-            viewerScreen: !!this.viewerScreen,
-            viewerUI: !!this.viewerUI
-        });
+        // 요소 확인 (디버그 모드에서만)
         
         this.canvas = document.getElementById('canvas');
         this.ctx = this.canvas.getContext('2d');
@@ -111,10 +140,7 @@ class DxfPhotoEditor {
     }
     
     getEntityColor(entity) {
-        if (!this.colorDebugCount) this.colorDebugCount = 0;
-        
         let color = null;
-        let source = 'default';
         
         // 1. ByLayer 확인 (colorIndex === 256 또는 colorIndex가 없는 경우)
         if (entity.colorIndex === 256 || entity.colorIndex === undefined) {
@@ -128,26 +154,20 @@ class DxfPhotoEditor {
                     // A. 직접 객체 접근 (예: layers["L_가드펜스"])
                     if (!Array.isArray(layersObj) && typeof layersObj === 'object') {
                         layer = layersObj[entity.layer];
-                        if (layer) source = 'layers[name]';
                     }
                     
-                    // B. layers.layers 객체 (예: layers.layers["L_가드펜스"]) ⭐ 수정
+                    // B. layers.layers 객체 (예: layers.layers["L_가드펜스"])
                     if (!layer && layersObj.layers) {
                         if (Array.isArray(layersObj.layers)) {
-                            // 배열인 경우
                             layer = layersObj.layers.find(l => l.name === entity.layer);
-                            if (layer) source = 'layers.layers[]';
                         } else if (typeof layersObj.layers === 'object') {
-                            // 객체인 경우 ⭐ 새로 추가
                             layer = layersObj.layers[entity.layer];
-                            if (layer) source = 'layers.layers[name]';
                         }
                     }
                     
                     // C. 직접 배열 (예: layers[0].name)
                     if (!layer && Array.isArray(layersObj)) {
                         layer = layersObj.find(l => l.name === entity.layer);
-                        if (layer) source = 'layers[]';
                     }
                     
                     // 레이어에서 색상 추출
@@ -155,7 +175,6 @@ class DxfPhotoEditor {
                         // colorIndex 우선
                         if (layer.colorIndex !== undefined && layer.colorIndex !== null) {
                             color = this.autocadColorIndexToHex(layer.colorIndex);
-                            source += `.colorIndex(${layer.colorIndex})`;
                         }
                         // color 대체
                         else if (layer.color !== undefined && layer.color !== null) {
@@ -164,7 +183,6 @@ class DxfPhotoEditor {
                             } else if (typeof layer.color === 'number') {
                                 color = '#' + layer.color.toString(16).padStart(6, '0').toUpperCase();
                             }
-                            source += '.color';
                         }
                     }
                 }
@@ -173,31 +191,25 @@ class DxfPhotoEditor {
         // 2. 엔티티 자체의 colorIndex 확인 (ByLayer가 아닌 경우)
         else if (entity.colorIndex !== undefined && entity.colorIndex >= 0 && entity.colorIndex < 256) {
             color = this.autocadColorIndexToHex(entity.colorIndex);
-            source = `entity.colorIndex(${entity.colorIndex})`;
         }
         
         // 3. entity.color 확인 (dxf-parser가 이미 변환한 경우)
         if (!color && entity.color !== undefined && entity.color !== null) {
             if (typeof entity.color === 'string') {
                 color = entity.color;
-                source = 'entity.color(string)';
             } else if (typeof entity.color === 'number') {
                 color = '#' + entity.color.toString(16).padStart(6, '0').toUpperCase();
-                source = 'entity.color(number)';
             }
         }
         
         // 4. 기본값: 검은색
         if (!color) {
             color = '#000000';
-            source = 'default';
         }
         
         // 5. 흰색이면 검은색으로 변경 (배경과 구분)
         if (color.toUpperCase() === '#FFFFFF' || color.toUpperCase() === '#FFF') {
-            console.log(`⚪ 흰색→검은색: ${entity.type} layer="${entity.layer}"`);
             color = '#000000';
-            source += ' → white→black';
         }
         
         // 디버깅 (처음 20개)
@@ -658,16 +670,9 @@ class DxfPhotoEditor {
         document.getElementById('camera-input').addEventListener('change', async (e) => {
             try {
                 const file = e.target.files[0];
-                console.log('📸 카메라 입력 변경 감지!');
-                console.log('   파일:', file);
-                console.log('   파일명:', file?.name);
-                console.log('   파일 크기:', file?.size, 'bytes');
-                console.log('   파일 타입:', file?.type);
-                console.log('   롱프레스 위치:', this.longPressPosition);
-                console.log('   대기 중인 위치:', this.pendingPhotoLocation);
+                this.debugLog('📸 카메라 입력:', file?.name, file?.size, 'bytes');
                 
                 if (!file) {
-                    console.warn('⚠️ 선택된 파일이 없습니다');
                     this.showToast('⚠️ 파일이 선택되지 않았습니다');
                     return;
                 }
@@ -701,15 +706,9 @@ class DxfPhotoEditor {
         document.getElementById('gallery-input').addEventListener('change', async (e) => {
             try {
                 const file = e.target.files[0];
-                console.log('🖼️ 갤러리 입력 변경 감지!');
-                console.log('   파일:', file);
-                console.log('   파일명:', file?.name);
-                console.log('   파일 크기:', file?.size, 'bytes');
-                console.log('   파일 타입:', file?.type);
-                console.log('   롱프레스 위치:', this.longPressPosition);
+                this.debugLog('🖼️ 갤러리 입력:', file?.name, file?.size, 'bytes');
                 
                 if (!file) {
-                    console.warn('⚠️ 선택된 파일이 없습니다');
                     this.showToast('⚠️ 파일이 선택되지 않았습니다');
                     return;
                 }
@@ -742,14 +741,12 @@ class DxfPhotoEditor {
         
         if (textCancelBtn) {
             textCancelBtn.addEventListener('click', () => {
-                console.log('❌ 텍스트 입력 취소');
                 this.hideTextInputModal();
             });
         }
         
         if (textSaveBtn) {
             textSaveBtn.addEventListener('click', () => {
-                console.log('💾 텍스트 저장 시도');
                 this.saveTextInput();
             });
         }
@@ -1757,11 +1754,16 @@ class DxfPhotoEditor {
             };
             this.localSourceFile = file;
             
-            // 사진/텍스트 데이터 초기화
+            // 사진/텍스트 데이터 초기화 (메모리 정리)
+            if (this.photos.length > 0) {
+                this.photos.forEach(photo => {
+                    photo.imageData = null; // 메모리 해제
+                });
+            }
             this.photos = [];
             this.texts = [];
             this.metadataDirty = false;
-            this.debugLog('   사진/텍스트 데이터 초기화');
+            this.debugLog('   사진/텍스트 데이터 초기화 완료');
             
             await this.ensureDriveContextForLocalFile(file);
             
@@ -3714,7 +3716,8 @@ class DxfPhotoEditor {
                 console.log('   ✅ Google Drive 삭제 완료');
             }
             
-            // 로컬 배열에서 제거
+            // 로컬 배열에서 제거 (메모리 정리)
+            photoToDelete.imageData = null; // 메모리 해제
             this.photos = this.photos.filter(p => p.id !== this.selectedPhotoId);
             console.log('   ✅ 로컬 배열에서 제거 완료');
             this.metadataDirty = true;

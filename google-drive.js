@@ -1,14 +1,41 @@
 /**
- * Google Drive API 관리 클래스
- * 참조: 참조/1111_01_드라이브접속성공/google-drive.js
+ * ========================================
+ * DMAP - Google Drive API 관리 모듈
+ * ========================================
+ * 
+ * 용도:
+ *   - Google Drive와의 파일 동기화 담당
+ *   - OAuth 2.0 인증 관리
+ *   - DXF, 사진, 메타데이터 업로드/다운로드
  * 
  * 주요 기능:
- * - Google Identity Services를 통한 OAuth 인증
- * - DXF 파일 목록 조회
- * - 파일 다운로드/업로드
- * - 메타데이터 저장
+ *   1. Google Identity Services OAuth 인증
+ *   2. 액세스 토큰 자동 갱신 (localStorage 캐싱)
+ *   3. DXF 파일 목록 조회/필터링
+ *   4. 파일 업로드/다운로드 (멀티파트)
+ *   5. 메타데이터 JSON 관리
+ *   6. 사진 파일 삭제
+ * 
+ * 최적화:
+ *   - 토큰 localStorage 캐싱 (만료 1분 전 자동 갱신)
+ *   - 인증 재시도 로직 (401/403 자동 처리)
+ *   - fetchWithAuth 통합 메서드
+ * 
+ * 의존성:
+ *   - Google Identity Services (GIS)
+ *   - Google Drive API v3
+ * 
+ * 버전: 1.0.0
+ * 최종 수정: 2025-11-18
+ * ========================================
  */
 
+/**
+ * Google Drive API 관리 클래스
+ * - OAuth 인증 및 토큰 관리
+ * - 파일 업로드/다운로드
+ * - 메타데이터 동기화
+ */
 class GoogleDriveManager {
     constructor() {
         // OAuth 설정
