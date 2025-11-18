@@ -1161,7 +1161,7 @@ class DxfPhotoEditor {
             x: this.longPressPosition.x,
             y: this.longPressPosition.y,
             text: text,
-            fontSize: this.viewBox.width * 0.02 // ViewBox 크기의 2%
+            fontSize: 50 // 고정 크기 (AutoCAD 호환용, 웹에서는 18px로 표시)
         };
         
         this.texts.push(textObj);
@@ -2315,9 +2315,17 @@ class DxfPhotoEditor {
         line.setAttribute('y2', -entity.vertices[1].y);
         line.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: DXF 굵기가 0이면 0.6, 아니면 3
+        // 조건부 선 굵기: DXF 굵기가 0이면 0.5, 아니면 5 (더 명확한 구분)
         const lineweight = entity.lineweight || entity.constantWidth || 0;
-        const strokeWidth = (lineweight === 0) ? 0.6 : 3;
+        const strokeWidth = (lineweight === 0) ? 0.5 : 5;
+        
+        // 디버그: 첫 10개만 로그
+        if (!this._lineDebugCount) this._lineDebugCount = 0;
+        if (this._lineDebugCount < 10) {
+            this.debugLog(`📏 LINE lineweight=${lineweight} → strokeWidth=${strokeWidth}`);
+            this._lineDebugCount++;
+        }
+        
         line.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         line.setAttribute('stroke-linecap', 'round');
@@ -2356,9 +2364,17 @@ class DxfPhotoEditor {
         element.setAttribute('fill', 'none');
         element.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: DXF 굵기가 0이면 0.6, 아니면 3
+        // 조건부 선 굵기: DXF 굵기가 0이면 0.5, 아니면 5 (더 명확한 구분)
         const lineweight = entity.lineweight || entity.constantWidth || 0;
-        const strokeWidth = (lineweight === 0) ? 0.6 : 3;
+        const strokeWidth = (lineweight === 0) ? 0.5 : 5;
+        
+        // 디버그: 첫 10개만 로그
+        if (!this._polylineWeightDebugCount) this._polylineWeightDebugCount = 0;
+        if (this._polylineWeightDebugCount < 10) {
+            this.debugLog(`📏 POLYLINE lineweight=${lineweight} constantWidth=${entity.constantWidth} → strokeWidth=${strokeWidth}`);
+            this._polylineWeightDebugCount++;
+        }
+        
         element.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         element.setAttribute('stroke-linejoin', 'round');
@@ -2387,9 +2403,9 @@ class DxfPhotoEditor {
         circle.setAttribute('fill', 'none');
         circle.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: DXF 굵기가 0이면 0.6, 아니면 3
+        // 조건부 선 굵기: DXF 굵기가 0이면 0.5, 아니면 5
         const lineweight = entity.lineweight || entity.constantWidth || 0;
-        const strokeWidth = (lineweight === 0) ? 0.6 : 3;
+        const strokeWidth = (lineweight === 0) ? 0.5 : 5;
         circle.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return circle;
@@ -2415,9 +2431,9 @@ class DxfPhotoEditor {
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: DXF 굵기가 0이면 0.6, 아니면 3
+        // 조건부 선 굵기: DXF 굵기가 0이면 0.5, 아니면 5
         const lineweight = entity.lineweight || entity.constantWidth || 0;
-        const strokeWidth = (lineweight === 0) ? 0.6 : 3;
+        const strokeWidth = (lineweight === 0) ? 0.5 : 5;
         path.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return path;
@@ -2603,9 +2619,9 @@ class DxfPhotoEditor {
         polyline.setAttribute('fill', 'none');
         polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: DXF 굵기가 0이면 0.6, 아니면 3
+        // 조건부 선 굵기: DXF 굵기가 0이면 0.5, 아니면 5
         const lineweight = entity.lineweight || entity.constantWidth || 0;
-        const strokeWidth = (lineweight === 0) ? 0.6 : 3;
+        const strokeWidth = (lineweight === 0) ? 0.5 : 5;
         polyline.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return polyline;
@@ -2630,9 +2646,9 @@ class DxfPhotoEditor {
         ellipse.setAttribute('fill', 'none');
         ellipse.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: DXF 굵기가 0이면 0.6, 아니면 3
+        // 조건부 선 굵기: DXF 굵기가 0이면 0.5, 아니면 5
         const lineweight = entity.lineweight || entity.constantWidth || 0;
-        const strokeWidth = (lineweight === 0) ? 0.6 : 3;
+        const strokeWidth = (lineweight === 0) ? 0.5 : 5;
         ellipse.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return ellipse;
