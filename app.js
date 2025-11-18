@@ -2223,8 +2223,14 @@ class DxfPhotoEditor {
                 } else if (line === '43' && i + 1 < lines.length) {
                     try {
                         const val = parseFloat(lines[i + 1].trim());
-                        if (!isNaN(val) && val > 0) {
-                            constantWidth = val;
+                        if (!isNaN(val)) {
+                            // 0보다 큰 값만 저장 (0.05도 포함)
+                            if (val > 0) {
+                                constantWidth = val;
+                                if (currentLayer && currentLayer.includes('턱낮춤')) {
+                                    console.log(`🔍 constantWidth 발견: layer="${currentLayer}", line=${i+1}, value=${val}`);
+                                }
+                            }
                         }
                     } catch (e) {
                         // 무시
@@ -2252,6 +2258,9 @@ class DxfPhotoEditor {
                             type: entityType,
                             firstVertex: firstVertexX !== null && firstVertexY !== null ? { x: firstVertexX, y: firstVertexY } : null
                         });
+                        if (currentLayer.includes('턱낮춤')) {
+                            console.log(`📝 constantWidthMap에 추가: layer="${currentLayer}", constantWidth=${constantWidth}, type=${entityType}`);
+                        }
                     }
                     inEntity = false;
                     currentLayer = '';
@@ -2273,20 +2282,32 @@ class DxfPhotoEditor {
         }
         
         // 2단계: 파싱된 엔티티와 매칭
+        console.log(`📊 constantWidthMap 총 ${constantWidthMap.length}개 항목`);
+        if (constantWidthMap.length > 0) {
+            console.log('constantWidthMap 샘플 (처음 5개):', constantWidthMap.slice(0, 5));
+        }
+        
         let mapIndex = 0;
+        let entityIndex = 0;
         this.dxfData.entities.forEach((entity) => {
             if (entity.type !== 'LWPOLYLINE' && entity.type !== 'POLYLINE') {
                 return;
             }
             
+            entityIndex++;
+            
             // 이미 constantWidth가 있으면 스킵
             if (entity.constantWidth !== undefined && entity.constantWidth !== null) {
+                if (entity.layer && entity.layer.includes('턱낮춤')) {
+                    console.log(`⏭️ 이미 constantWidth 있음: layer="${entity.layer}", constantWidth=${entity.constantWidth}`);
+                }
                 return;
             }
             
             // 같은 타입, 같은 레이어의 엔티티 찾기
-            while (mapIndex < constantWidthMap.length) {
-                const mapItem = constantWidthMap[mapIndex];
+            let matched = false;
+            for (let i = mapIndex; i < constantWidthMap.length; i++) {
+                const mapItem = constantWidthMap[i];
                 
                 if (mapItem.type === entity.type && mapItem.layer === entity.layer) {
                     // 첫 번째 정점으로 정확히 매칭 시도
@@ -2301,11 +2322,12 @@ class DxfPhotoEditor {
                                 // 정확히 매칭됨
                                 entity.constantWidth = mapItem.constantWidth;
                                 foundCount++;
+                                matched = true;
                                 if (entity.layer && entity.layer.includes('턱낮춤')) {
-                                    console.log(`✅ constantWidth 추출: layer="${entity.layer}", constantWidth=${mapItem.constantWidth}`);
+                                    console.log(`✅ constantWidth 매칭 (정점 기반): layer="${entity.layer}", constantWidth=${mapItem.constantWidth}, entityIndex=${entityIndex}`);
                                 }
-                                mapIndex++;
-                                return;
+                                mapIndex = i + 1;
+                                break;
                             }
                         }
                     }
@@ -2313,14 +2335,17 @@ class DxfPhotoEditor {
                     // 정점 매칭 실패 시, 레이어와 타입만으로 매칭 (순서 기반)
                     entity.constantWidth = mapItem.constantWidth;
                     foundCount++;
+                    matched = true;
                     if (entity.layer && entity.layer.includes('턱낮춤')) {
-                        console.log(`✅ constantWidth 추출 (순서 기반): layer="${entity.layer}", constantWidth=${mapItem.constantWidth}`);
+                        console.log(`✅ constantWidth 매칭 (순서 기반): layer="${entity.layer}", constantWidth=${mapItem.constantWidth}, entityIndex=${entityIndex}`);
                     }
-                    mapIndex++;
-                    return;
+                    mapIndex = i + 1;
+                    break;
                 }
-                
-                mapIndex++;
+            }
+            
+            if (!matched && entity.layer && entity.layer.includes('턱낮춤')) {
+                console.log(`❌ 매칭 실패: layer="${entity.layer}", type=${entity.type}, entityIndex=${entityIndex}`);
             }
         });
         
