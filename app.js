@@ -2642,6 +2642,7 @@ class DxfPhotoEditor {
     /**
      * ViewBox만 빠르게 업데이트 (드래그/줌 중)
      * requestAnimationFrame으로 최적화
+     * 지도 동기화는 하지 않음 (성능 최적화 - 종료 시점에만 동기화)
      */
     updateViewBox() {
         if (!this.dxfData) return;
@@ -2661,10 +2662,7 @@ class DxfPhotoEditor {
             // Canvas 사진만 다시 그리기 (빠름)
             this.drawPhotosCanvas();
             
-            // 지도 모드일 때 지도 bounds도 함께 업데이트
-            if (this.isMapMode && this.map && !this.syncingFromMap && this.dxfBoundsWGS84) {
-                this.syncViewBoxToMapBounds();
-            }
+            // 지도 동기화는 드래그/줌 종료 시점에만 수행 (성능 최적화)
         });
     }
     
@@ -3883,7 +3881,8 @@ class DxfPhotoEditor {
             }
             
             // 드래그 중이었다면 wasDragging 플래그 설정 (클릭 이벤트 방지)
-            if (this.touchState.isDragging) {
+            const wasDragging = this.touchState.isDragging;
+            if (wasDragging) {
                 this.touchState.wasDragging = true;
                 setTimeout(() => {
                     this.touchState.wasDragging = false;
@@ -3891,11 +3890,20 @@ class DxfPhotoEditor {
             }
             
             // 핀치줌 중이었다면 wasPinching 플래그 설정 (클릭 이벤트 방지)
-            if (this.touchState.isPinching) {
+            const wasPinching = this.touchState.isPinching;
+            if (wasPinching) {
                 this.touchState.wasPinching = true;
                 setTimeout(() => {
                     this.touchState.wasPinching = false;
                 }, 100);
+            }
+            
+            // 드래그나 핀치줌이 끝났을 때 지도 동기화 (지도 모드일 때만)
+            if ((wasDragging || wasPinching) && this.isMapMode && this.map && !this.syncingFromMap && this.dxfBoundsWGS84) {
+                // 약간의 지연 후 동기화 (터치 이벤트 처리 완료 후)
+                setTimeout(() => {
+                    this.syncViewBoxToMapBounds();
+                }, 50);
             }
             
             // rect 캐시 무효화 (ViewBox가 변경되었을 수 있음)
@@ -3915,11 +3923,19 @@ class DxfPhotoEditor {
             const touch = touches[0];
             
             // 핀치줌이 끝났음을 표시
-            if (this.touchState.isPinching) {
+            const wasPinching = this.touchState.isPinching;
+            if (wasPinching) {
                 this.touchState.wasPinching = true;
                 setTimeout(() => {
                     this.touchState.wasPinching = false;
                 }, 100);
+                
+                // 핀치줌 종료 시 지도 동기화 (지도 모드일 때만)
+                if (this.isMapMode && this.map && !this.syncingFromMap && this.dxfBoundsWGS84) {
+                    setTimeout(() => {
+                        this.syncViewBoxToMapBounds();
+                    }, 50);
+                }
             }
             
             // 드래그 재시작 준비
@@ -3998,6 +4014,8 @@ class DxfPhotoEditor {
         
         // 빠른 업데이트 (ViewBox만)
         this.updateViewBox();
+        
+        // 더블탭 줌 시 지도 동기화는 onTouchEnd에서 처리 (터치 종료 후)
     }
     
     /**
@@ -4315,6 +4333,13 @@ class DxfPhotoEditor {
         
         // zoomAt 메서드 사용 (중심점 기준 확대)
         this.zoomAt(centerX, centerY, 1 / factor);
+        
+        // 줌 버튼 사용 시 지도 동기화 (지도 모드일 때만)
+        if (this.isMapMode && this.map && !this.syncingFromMap && this.dxfBoundsWGS84) {
+            setTimeout(() => {
+                this.syncViewBoxToMapBounds();
+            }, 100);
+        }
     }
     
     openMemoModal(photoId) {
