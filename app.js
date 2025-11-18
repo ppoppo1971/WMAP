@@ -130,6 +130,8 @@ class DxfPhotoEditor {
         this.mapInitialized = false;
         this.dxfBounds = null; // DXF 도면의 EPSG:5186 좌표 경계 { minX, minY, maxX, maxY }
         this.dxfBoundsWGS84 = null; // 변환된 WGS84 좌표 경계 { minLat, minLng, maxLat, maxLng }
+        this.mapBoundsListener = null; // 지도 bounds 변경 리스너
+        this.isMapMode = false; // 지도 모드 여부
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -5066,6 +5068,9 @@ class DxfPhotoEditor {
                     this.map.fitBounds(bounds, {
                         padding: { top: 50, right: 50, bottom: 50, left: 50 }
                     });
+                    
+                    // 지도 bounds와 SVG viewBox 동기화
+                    this.syncMapBoundsToViewBox();
                 } else {
                     // 지도 중심 재설정 (타일이 제대로 로드되도록)
                     const center = this.map.getCenter();
@@ -5075,15 +5080,127 @@ class DxfPhotoEditor {
                     }
                 }
                 
+                // 지도 bounds 변경 리스너 추가 (지도 이동/줌 시 SVG viewBox 동기화)
+                if (this.mapBoundsListener) {
+                    google.maps.event.removeListener(this.mapBoundsListener);
+                }
+                this.mapBoundsListener = google.maps.event.addListener(this.map, 'bounds_changed', () => {
+                    if (this.isMapMode && this.dxfBoundsWGS84) {
+                        this.syncMapBoundsToViewBox();
+                    }
+                });
+                
+                this.isMapMode = true;
+                
                 // 타일 로드 확인을 위한 idle 이벤트 리스너
                 google.maps.event.addListenerOnce(this.map, 'idle', () => {
                     console.log('✅ 지도 타일 로드 완료 (showMap 후)');
+                    // idle 이벤트 후에도 한 번 더 동기화
+                    if (this.dxfBoundsWGS84) {
+                        this.syncMapBoundsToViewBox();
+                    }
                 });
             }
         }, 500);
         
         console.log(`✅ 지도 표시: ${mapType}`);
         this.showToast(`🗺️ ${mapType === 'google' ? '구글맵' : '브이월드'} 표시`);
+    }
+    
+    /**
+     * 지도 bounds를 SVG viewBox로 동기화
+     * DXF 도면의 EPSG:5186 좌표를 지도 위경도 좌표계에 맞게 매핑
+     */
+    syncMapBoundsToViewBox() {
+        if (!this.map || !this.dxfBounds || !this.dxfBoundsWGS84) {
+            return;
+        }
+        
+        try {
+            const bounds = this.map.getBounds();
+            if (!bounds) return;
+            
+            const ne = bounds.getNorthEast(); // 북동쪽
+            const sw = bounds.getSouthWest(); // 남서쪽
+            
+            // 지도 bounds의 위경도
+            const mapMinLng = sw.lng();
+            const mapMaxLng = ne.lng();
+            const mapMinLat = sw.lat();
+            const mapMaxLat = ne.lat();
+            
+            // DXF 경계의 위경도 (WGS84)
+            const { minLat, maxLat, minLng, maxLng } = this.dxfBoundsWGS84;
+            // DXF 경계의 EPSG:5186 좌표
+            const { minX, minY, maxX, maxY } = this.dxfBounds;
+            
+            // DXF 경계의 크기 (EPSG:5186)
+            const dxfWidth = maxX - minX;
+            const dxfHeight = maxY - minY;
+            
+            // DXF 경계의 위경도 범위 (WGS84)
+            const dxfLatRange = maxLat - minLat;
+            const dxfLngRange = maxLng - minLng;
+            
+            // 지도 bounds의 위경도 범위
+            const mapLatRange = mapMaxLat - mapMinLat;
+            const mapLngRange = mapMaxLng - mapMinLng;
+            
+            // DXF 좌표계와 지도 좌표계 간의 스케일 비율 계산
+            // 경도 방향 스케일: 지도 경도 범위 / DXF 경도 범위 = DXF 좌표 단위 / 지도 좌표 단위
+            const scaleX = dxfWidth / dxfLngRange; // 미터/도
+            const scaleY = dxfHeight / dxfLatRange; // 미터/도
+            
+            // 지도 bounds의 중심점
+            const mapCenterLat = (mapMinLat + mapMaxLat) / 2;
+            const mapCenterLng = (mapMinLng + mapMaxLng) / 2;
+            
+            // DXF 경계의 중심점 (WGS84)
+            const dxfCenterLat = (minLat + maxLat) / 2;
+            const dxfCenterLng = (minLng + maxLng) / 2;
+            
+            // DXF 경계의 중심점 (EPSG:5186)
+            const dxfCenterX = (minX + maxX) / 2;
+            const dxfCenterY = (minY + maxY) / 2;
+            
+            // 지도 중심점에 해당하는 DXF 좌표 계산
+            // 지도 중심과 DXF 중심의 차이를 DXF 좌표로 변환
+            const deltaLng = mapCenterLng - dxfCenterLng; // 경도 차이 (도)
+            const deltaLat = mapCenterLat - dxfCenterLat; // 위도 차이 (도)
+            
+            // DXF 좌표로 변환
+            const deltaX = deltaLng * scaleX;
+            const deltaY = deltaLat * scaleY;
+            
+            // 지도 중심에 해당하는 DXF 좌표
+            const mapCenterDxfX = dxfCenterX + deltaX;
+            const mapCenterDxfY = dxfCenterY + deltaY;
+            
+            // 지도 bounds에 해당하는 DXF 좌표 범위
+            const mapDxfWidth = mapLngRange * scaleX;
+            const mapDxfHeight = mapLatRange * scaleY;
+            
+            // SVG viewBox 설정 (DXF 좌표계 사용)
+            this.viewBox = {
+                x: mapCenterDxfX - mapDxfWidth / 2,
+                y: -(mapCenterDxfY + mapDxfHeight / 2), // Y축 반전 (SVG는 위에서 아래로 증가)
+                width: mapDxfWidth,
+                height: mapDxfHeight
+            };
+            
+            // ViewBox 업데이트
+            this.updateViewBox();
+            
+            console.log('🔄 지도 bounds와 SVG viewBox 동기화:', {
+                mapBounds: { minLat: mapMinLat, maxLat: mapMaxLat, minLng: mapMinLng, maxLng: mapMaxLng },
+                dxfBoundsWGS84: this.dxfBoundsWGS84,
+                dxfBounds: this.dxfBounds,
+                scale: { scaleX, scaleY },
+                viewBox: this.viewBox
+            });
+        } catch (error) {
+            console.error('❌ 지도 bounds 동기화 실패:', error);
+        }
     }
     
     /**
@@ -5094,6 +5211,14 @@ class DxfPhotoEditor {
             return;
         }
         
+        // 지도 bounds 리스너 제거
+        if (this.mapBoundsListener && this.map && window.google && window.google.maps) {
+            google.maps.event.removeListener(this.mapBoundsListener);
+            this.mapBoundsListener = null;
+        }
+        
+        this.isMapMode = false;
+        
         this.mapContainer.style.display = 'none';
         this.mapContainer.style.visibility = 'hidden';
         this.mapContainer.style.opacity = '0';
@@ -5102,6 +5227,12 @@ class DxfPhotoEditor {
         
         // SVG 배경 복원
         this.svg.style.background = '#e8e8e8';
+        
+        // 원본 ViewBox로 복원 (지도 모드가 아닐 때)
+        if (this.originalViewBox) {
+            this.viewBox = {...this.originalViewBox};
+            this.updateViewBox();
+        }
         
         console.log('✅ 지도 숨김');
         this.showToast('🗺️ 지도 숨김');
