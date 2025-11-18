@@ -131,6 +131,7 @@ class DxfPhotoEditor {
         this.dxfBounds = null; // DXF 도면의 EPSG:5186 좌표 경계 { minX, minY, maxX, maxY }
         this.dxfBoundsWGS84 = null; // 변환된 WGS84 좌표 경계 { minLat, minLng, maxLat, maxLng }
         this.mapBoundsListener = null; // 지도 bounds 변경 리스너
+        this.boundsChangeTimeout = null; // bounds_changed throttle용
         this.isMapMode = false; // 지도 모드 여부
         this.syncingFromMap = false; // 지도에서 도면으로 동기화 중인지 (무한 루프 방지)
         this.syncingFromViewBox = false; // 도면에서 지도로 동기화 중인지 (무한 루프 방지)
@@ -4341,21 +4342,25 @@ class DxfPhotoEditor {
      * @param {number} factor - 줌 배율 (1보다 크면 확대, 1보다 작으면 축소)
      */
     zoom(factor) {
-        // ViewBox 중심점 계산
-        const centerX = this.viewBox.x + this.viewBox.width / 2;
-        const centerY = this.viewBox.y + this.viewBox.height / 2;
-        
-        // zoomAt 메서드 사용 (중심점 기준 확대)
-        // factor가 1.2면 확대 (viewBox.width * (1/1.2) = 축소 → 반대로 해야 함)
-        // factor가 0.8이면 축소 (viewBox.width * (1/0.8) = 확대 → 반대로 해야 함)
-        // 따라서 1/factor가 아니라 factor를 직접 사용해야 함
-        this.zoomAt(centerX, centerY, factor);
-        
-        // 줌 버튼 사용 시 지도 동기화 (지도 모드일 때만)
-        if (this.isMapMode && this.map && !this.syncingFromMap && this.dxfBoundsWGS84) {
-            setTimeout(() => {
-                this.syncViewBoxToMapBounds();
-            }, 100);
+        // 지도 모드가 아닐 때만 직접 줌 수행
+        if (!this.isMapMode) {
+            // ViewBox 중심점 계산
+            const centerX = this.viewBox.x + this.viewBox.width / 2;
+            const centerY = this.viewBox.y + this.viewBox.height / 2;
+            
+            // zoomAt 메서드 사용 (중심점 기준 확대)
+            this.zoomAt(centerX, centerY, factor);
+        } else {
+            // 지도 모드일 때는 지도 줌을 사용 (지도가 viewBox를 동기화)
+            if (this.map && this.dxfBoundsWGS84) {
+                const currentZoom = this.map.getZoom();
+                if (currentZoom !== null && currentZoom !== undefined) {
+                    // factor > 1: 확대 (줌 레벨 증가)
+                    // factor < 1: 축소 (줌 레벨 감소)
+                    const newZoom = currentZoom + (factor > 1 ? 1 : -1);
+                    this.map.setZoom(newZoom);
+                }
+            }
         }
     }
     
@@ -5133,9 +5138,15 @@ class DxfPhotoEditor {
                 if (this.mapBoundsListener) {
                     google.maps.event.removeListener(this.mapBoundsListener);
                 }
+                // throttle 적용: bounds_changed 이벤트가 너무 자주 발생하므로 100ms마다 한 번만 동기화
                 this.mapBoundsListener = google.maps.event.addListener(this.map, 'bounds_changed', () => {
                     if (this.isMapMode && this.dxfBoundsWGS84 && !this.syncingFromViewBox) {
-                        this.syncMapBoundsToViewBox();
+                        if (this.boundsChangeTimeout) {
+                            clearTimeout(this.boundsChangeTimeout);
+                        }
+                        this.boundsChangeTimeout = setTimeout(() => {
+                            this.syncMapBoundsToViewBox();
+                        }, 100);
                     }
                 });
                 
@@ -5348,6 +5359,12 @@ class DxfPhotoEditor {
         if (this.mapBoundsListener && this.map && window.google && window.google.maps) {
             google.maps.event.removeListener(this.mapBoundsListener);
             this.mapBoundsListener = null;
+        }
+        
+        // throttle timeout 제거
+        if (this.boundsChangeTimeout) {
+            clearTimeout(this.boundsChangeTimeout);
+            this.boundsChangeTimeout = null;
         }
         
         this.isMapMode = false;
