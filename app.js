@@ -2731,7 +2731,7 @@ class DxfPhotoEditor {
         line.setAttribute('y2', -entity.vertices[1].y);
         line.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
+        // 조건부 선 굵기: 실제 굵기가 0 초과면 2px, 아니면 0.5px
         // ⭐ lineweight가 undefined인 경우 처리 개선
         const lineweight = (entity.lineweight !== undefined && entity.lineweight !== null && entity.lineweight >= 0) 
             ? entity.lineweight 
@@ -2740,7 +2740,7 @@ class DxfPhotoEditor {
             ? entity.constantWidth 
             : 0;
         const actualWidth = Math.max(lineweight >= 0 ? lineweight : 0, constantWidth);
-        const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
+        const strokeWidth = (actualWidth > 0) ? 2 : 0.5;
         
         // 디버그: 첫 30개 로그 (더 많이 출력)
         if (!this._lineDebugCount) this._lineDebugCount = 0;
@@ -2797,7 +2797,7 @@ class DxfPhotoEditor {
         element.setAttribute('fill', 'none');
         element.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
+        // 조건부 선 굵기: 실제 굵기가 0 초과면 2px, 아니면 0.5px
         // ⭐ lineweight가 undefined인 경우 처리 개선
         const lineweight = (entity.lineweight !== undefined && entity.lineweight !== null && entity.lineweight >= 0) 
             ? entity.lineweight 
@@ -2806,7 +2806,7 @@ class DxfPhotoEditor {
             ? entity.constantWidth 
             : 0;
         const actualWidth = Math.max(lineweight >= 0 ? lineweight : 0, constantWidth);
-        const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
+        const strokeWidth = (actualWidth > 0) ? 2 : 0.5;
         
         // 디버그: 첫 30개 로그 + .F턱낮춤 레이어는 모두 로그
         if (!this._polylineWeightDebugCount) this._polylineWeightDebugCount = 0;
@@ -2859,11 +2859,11 @@ class DxfPhotoEditor {
         circle.setAttribute('fill', 'none');
         circle.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
+        // 조건부 선 굵기: 실제 굵기가 0 초과면 2px, 아니면 0.5px
         const lineweight = (entity.lineweight >= 0) ? entity.lineweight : 0;
         const constantWidth = entity.constantWidth || 0;
         const actualWidth = Math.max(lineweight, constantWidth);
-        const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
+        const strokeWidth = (actualWidth > 0) ? 2 : 0.5;
         circle.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return circle;
@@ -2889,11 +2889,11 @@ class DxfPhotoEditor {
         path.setAttribute('fill', 'none');
         path.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
+        // 조건부 선 굵기: 실제 굵기가 0 초과면 2px, 아니면 0.5px
         const lineweight = (entity.lineweight >= 0) ? entity.lineweight : 0;
         const constantWidth = entity.constantWidth || 0;
         const actualWidth = Math.max(lineweight, constantWidth);
-        const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
+        const strokeWidth = (actualWidth > 0) ? 2 : 0.5;
         path.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return path;
@@ -3079,11 +3079,11 @@ class DxfPhotoEditor {
         polyline.setAttribute('fill', 'none');
         polyline.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
+        // 조건부 선 굵기: 실제 굵기가 0 초과면 2px, 아니면 0.5px
         const lineweight = (entity.lineweight >= 0) ? entity.lineweight : 0;
         const constantWidth = entity.constantWidth || 0;
         const actualWidth = Math.max(lineweight, constantWidth);
-        const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
+        const strokeWidth = (actualWidth > 0) ? 2 : 0.5;
         polyline.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return polyline;
@@ -3108,11 +3108,11 @@ class DxfPhotoEditor {
         ellipse.setAttribute('fill', 'none');
         ellipse.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
-        // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
+        // 조건부 선 굵기: 실제 굵기가 0 초과면 2px, 아니면 0.5px
         const lineweight = (entity.lineweight >= 0) ? entity.lineweight : 0;
         const constantWidth = entity.constantWidth || 0;
         const actualWidth = Math.max(lineweight, constantWidth);
-        const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
+        const strokeWidth = (actualWidth > 0) ? 2 : 0.5;
         ellipse.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
         
         return ellipse;
