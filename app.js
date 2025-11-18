@@ -2025,11 +2025,17 @@ class DxfPhotoEditor {
         
         const parser = new DxfParser();
         this.dxfData = parser.parseSync(text);
+        
+        // 원본 DXF 텍스트 저장 (constantWidth 추출용)
+        this.dxfText = text;
             
         // 5. 파싱된 데이터 검증
         if (!this.dxfData) {
             throw new Error('DXF 파일 파싱에 실패했습니다.');
         }
+        
+        // 5-1. constantWidth 값 수동 추출 (파서가 파싱하지 못하는 경우 대비)
+        this._extractConstantWidths();
         
         // 엔티티가 없는 경우 경고
         if (!this.dxfData.entities || this.dxfData.entities.length === 0) {
@@ -2168,10 +2174,159 @@ class DxfPhotoEditor {
         // DXF 렌더링
         this.fitDxfToView();
         this.redraw();
+    }
+    
+    /**
+     * DXF 원본 텍스트에서 constantWidth 값을 추출하여 엔티티에 추가
+     * DXF 파서가 constantWidth를 파싱하지 못하는 경우를 대비
+     */
+    _extractConstantWidths() {
+        if (!this.dxfText || !this.dxfData || !this.dxfData.entities) {
+            return;
+        }
         
-        // 버튼은 항상 활성화 상태 (disabled 속성 제거)
+        const lines = this.dxfText.split(/\r?\n/);
+        let foundCount = 0;
         
-        console.log(`✅ DXF 로드 완료: ${this.dxfData.entities ? this.dxfData.entities.length : 0}개 엔티티`);
+        // 1단계: 원본 텍스트에서 모든 LWPOLYLINE/POLYLINE의 constantWidth 추출
+        const constantWidthMap = []; // { layer, constantWidth, firstVertex } 배열
+        let inEntity = false;
+        let currentLayer = '';
+        let constantWidth = null;
+        let entityType = '';
+        let firstVertexX = null;
+        let firstVertexY = null;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            if (line === 'LWPOLYLINE' || line === 'POLYLINE') {
+                // 이전 엔티티 저장
+                if (inEntity && constantWidth !== null && currentLayer) {
+                    constantWidthMap.push({
+                        layer: currentLayer,
+                        constantWidth: constantWidth,
+                        type: entityType,
+                        firstVertex: firstVertexX !== null && firstVertexY !== null ? { x: firstVertexX, y: firstVertexY } : null
+                    });
+                }
+                // 새 엔티티 시작
+                inEntity = true;
+                entityType = line;
+                currentLayer = '';
+                constantWidth = null;
+                firstVertexX = null;
+                firstVertexY = null;
+            } else if (inEntity) {
+                if (line === '8' && i + 1 < lines.length) {
+                    currentLayer = lines[i + 1].trim();
+                } else if (line === '43' && i + 1 < lines.length) {
+                    try {
+                        const val = parseFloat(lines[i + 1].trim());
+                        if (!isNaN(val) && val > 0) {
+                            constantWidth = val;
+                        }
+                    } catch (e) {
+                        // 무시
+                    }
+                } else if (line === '10' && i + 1 < lines.length && firstVertexX === null) {
+                    // 첫 번째 정점 X 좌표
+                    try {
+                        firstVertexX = parseFloat(lines[i + 1].trim());
+                    } catch (e) {
+                        // 무시
+                    }
+                } else if (line === '20' && i + 1 < lines.length && firstVertexX !== null && firstVertexY === null) {
+                    // 첫 번째 정점 Y 좌표
+                    try {
+                        firstVertexY = parseFloat(lines[i + 1].trim());
+                    } catch (e) {
+                        // 무시
+                    }
+                } else if (line === '0' || line === 'SEQEND') {
+                    // 엔티티 종료
+                    if (constantWidth !== null && currentLayer) {
+                        constantWidthMap.push({
+                            layer: currentLayer,
+                            constantWidth: constantWidth,
+                            type: entityType,
+                            firstVertex: firstVertexX !== null && firstVertexY !== null ? { x: firstVertexX, y: firstVertexY } : null
+                        });
+                    }
+                    inEntity = false;
+                    currentLayer = '';
+                    constantWidth = null;
+                    firstVertexX = null;
+                    firstVertexY = null;
+                }
+            }
+        }
+        
+        // 마지막 엔티티 처리
+        if (inEntity && constantWidth !== null && currentLayer) {
+            constantWidthMap.push({
+                layer: currentLayer,
+                constantWidth: constantWidth,
+                type: entityType,
+                firstVertex: firstVertexX !== null && firstVertexY !== null ? { x: firstVertexX, y: firstVertexY } : null
+            });
+        }
+        
+        // 2단계: 파싱된 엔티티와 매칭
+        let mapIndex = 0;
+        this.dxfData.entities.forEach((entity) => {
+            if (entity.type !== 'LWPOLYLINE' && entity.type !== 'POLYLINE') {
+                return;
+            }
+            
+            // 이미 constantWidth가 있으면 스킵
+            if (entity.constantWidth !== undefined && entity.constantWidth !== null) {
+                return;
+            }
+            
+            // 같은 타입, 같은 레이어의 엔티티 찾기
+            while (mapIndex < constantWidthMap.length) {
+                const mapItem = constantWidthMap[mapIndex];
+                
+                if (mapItem.type === entity.type && mapItem.layer === entity.layer) {
+                    // 첫 번째 정점으로 정확히 매칭 시도
+                    if (entity.vertices && entity.vertices.length > 0) {
+                        const entityFirstVertex = entity.vertices[0];
+                        if (mapItem.firstVertex) {
+                            const threshold = 0.001;
+                            const xMatch = Math.abs(entityFirstVertex.x - mapItem.firstVertex.x) < threshold;
+                            const yMatch = Math.abs(entityFirstVertex.y - mapItem.firstVertex.y) < threshold;
+                            
+                            if (xMatch && yMatch) {
+                                // 정확히 매칭됨
+                                entity.constantWidth = mapItem.constantWidth;
+                                foundCount++;
+                                if (entity.layer && entity.layer.includes('턱낮춤')) {
+                                    console.log(`✅ constantWidth 추출: layer="${entity.layer}", constantWidth=${mapItem.constantWidth}`);
+                                }
+                                mapIndex++;
+                                return;
+                            }
+                        }
+                    }
+                    
+                    // 정점 매칭 실패 시, 레이어와 타입만으로 매칭 (순서 기반)
+                    entity.constantWidth = mapItem.constantWidth;
+                    foundCount++;
+                    if (entity.layer && entity.layer.includes('턱낮춤')) {
+                        console.log(`✅ constantWidth 추출 (순서 기반): layer="${entity.layer}", constantWidth=${mapItem.constantWidth}`);
+                    }
+                    mapIndex++;
+                    return;
+                }
+                
+                mapIndex++;
+            }
+        });
+        
+        if (foundCount > 0) {
+            console.log(`📏 constantWidth 추출 완료: ${foundCount}개 엔티티`);
+        }
     }
     
     fitDxfToView() {
