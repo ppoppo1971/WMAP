@@ -4780,16 +4780,19 @@ class DxfPhotoEditor {
         }
         
         try {
-            // 지도 컨테이너를 먼저 보이게 설정 (Google Maps 초기화를 위해)
-            // visibility: hidden으로 크기는 유지하되 보이지 않게
+            // 지도 컨테이너를 완전히 보이게 설정 (Google Maps 초기화를 위해 필수)
+            // Google Maps는 보이는 요소에만 타일을 로드합니다
             if (this.mapContainer) {
                 this.mapContainer.style.visibility = 'visible';
-                this.mapContainer.style.opacity = '0';
+                this.mapContainer.style.opacity = '1';
+                this.mapContainer.style.display = 'block';
             }
             
             // 기본 지도 중심 (남한 중심)
             const center = { lat: 36.3, lng: 127.8 };
             const zoom = 7;
+            
+            console.log('🗺️ Google Maps 초기화 시작...', { center, zoom });
             
             // Google Maps 객체 생성
             this.map = new google.maps.Map(this.mapElement, {
@@ -4808,10 +4811,14 @@ class DxfPhotoEditor {
                 mapTypeIds: ['roadmap', 'satellite', 'hybrid', '브이월드일반', '브이월드영상']
             });
             
+            console.log('✅ Google Maps 객체 생성 완료');
+            
             // 브이월드 일반 지도 타일 레이어 정의
             const vworldRoadmapType = new google.maps.ImageMapType({
                 getTileUrl: function(coord, zoom) {
-                    return 'https://xdworld.vworld.kr/2d/Base/service/' + zoom + '/' + coord.x + '/' + coord.y + '.png';
+                    const url = 'https://xdworld.vworld.kr/2d/Base/service/' + zoom + '/' + coord.x + '/' + coord.y + '.png';
+                    console.log('🗺️ 브이월드 일반 타일 요청:', url);
+                    return url;
                 },
                 tileSize: new google.maps.Size(256, 256),
                 name: '브이월드일반',
@@ -4821,7 +4828,9 @@ class DxfPhotoEditor {
             // 브이월드 영상 지도 타일 레이어 정의
             const vworldSatelliteType = new google.maps.ImageMapType({
                 getTileUrl: function(coord, zoom) {
-                    return 'https://xdworld.vworld.kr/2d/Satellite/service/' + zoom + '/' + coord.x + '/' + coord.y + '.jpeg';
+                    const url = 'https://xdworld.vworld.kr/2d/Satellite/service/' + zoom + '/' + coord.x + '/' + coord.y + '.jpeg';
+                    console.log('🛰️ 브이월드 위성 타일 요청:', url);
+                    return url;
                 },
                 tileSize: new google.maps.Size(256, 256),
                 name: '브이월드영상',
@@ -4832,27 +4841,40 @@ class DxfPhotoEditor {
             this.map.mapTypes.set('브이월드일반', vworldRoadmapType);
             this.map.mapTypes.set('브이월드영상', vworldSatelliteType);
             
-            // 지도가 완전히 로드될 때까지 대기
-            await new Promise((resolve) => {
-                google.maps.event.addListenerOnce(this.map, 'idle', () => {
-                    console.log('✅ 지도 타일 로드 완료');
-                    resolve();
-                });
-            });
+            console.log('✅ 브이월드 타일 레이어 추가 완료');
+            
+            // 지도가 완전히 로드될 때까지 대기 (최대 5초)
+            await Promise.race([
+                new Promise((resolve) => {
+                    google.maps.event.addListenerOnce(this.map, 'idle', () => {
+                        console.log('✅ 지도 타일 로드 완료 (idle 이벤트)');
+                        resolve();
+                    });
+                }),
+                new Promise((resolve) => {
+                    setTimeout(() => {
+                        console.log('⏰ 지도 로드 타임아웃 (5초)');
+                        resolve();
+                    }, 5000);
+                })
+            ]);
             
             // 초기화 후 다시 숨김 (showMap에서 표시)
             if (this.mapContainer) {
                 this.mapContainer.style.visibility = 'hidden';
                 this.mapContainer.style.opacity = '0';
+                this.mapContainer.style.display = 'none';
             }
             
             this.mapInitialized = true;
             console.log('✅ 지도 초기화 완료');
         } catch (error) {
             console.error('❌ 지도 초기화 실패:', error);
+            console.error('에러 상세:', error.stack);
             if (this.mapContainer) {
                 this.mapContainer.style.visibility = 'hidden';
                 this.mapContainer.style.opacity = '0';
+                this.mapContainer.style.display = 'none';
             }
         }
     }
@@ -4903,7 +4925,8 @@ class DxfPhotoEditor {
             return;
         }
         
-        // 지도 컨테이너를 먼저 표시 (resize 이벤트를 위해)
+        // 지도 컨테이너를 먼저 완전히 표시 (resize 이벤트를 위해 필수)
+        this.mapContainer.style.display = 'block';
         this.mapContainer.style.visibility = 'visible';
         this.mapContainer.style.opacity = '1';
         this.mapContainer.classList.add('visible');
@@ -4912,20 +4935,29 @@ class DxfPhotoEditor {
         this.svg.style.background = 'transparent';
         
         // 지도 타입 설정
+        console.log(`🗺️ 지도 타입 설정: ${mapType} -> ${mapTypeId}`);
         this.map.setMapTypeId(mapTypeId);
         this.currentMapType = mapType;
         
         // 지도 크기 조정 (resize 이벤트 발생) - 약간의 지연 후
         setTimeout(() => {
             if (this.map && window.google && window.google.maps) {
+                console.log('🔄 지도 resize 이벤트 트리거');
                 google.maps.event.trigger(this.map, 'resize');
+                
                 // 지도 중심 재설정 (타일이 제대로 로드되도록)
                 const center = this.map.getCenter();
                 if (center) {
+                    console.log('📍 지도 중심 재설정:', center.lat(), center.lng());
                     this.map.setCenter(center);
                 }
+                
+                // 타일 로드 확인을 위한 idle 이벤트 리스너
+                google.maps.event.addListenerOnce(this.map, 'idle', () => {
+                    console.log('✅ 지도 타일 로드 완료 (showMap 후)');
+                });
             }
-        }, 200);
+        }, 300);
         
         console.log(`✅ 지도 표시: ${mapType}`);
         this.showToast(`🗺️ ${mapType === 'google' ? '구글맵' : '브이월드'} 표시`);
@@ -4939,6 +4971,7 @@ class DxfPhotoEditor {
             return;
         }
         
+        this.mapContainer.style.display = 'none';
         this.mapContainer.style.visibility = 'hidden';
         this.mapContainer.style.opacity = '0';
         this.mapContainer.classList.remove('visible');
