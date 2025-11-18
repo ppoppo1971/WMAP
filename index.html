@@ -126,7 +126,13 @@ DMAP - DXF 도면 사진 편집기 (UI)
             width: 100%;
             height: 100%;
             z-index: 0;
-            display: none;
+            visibility: hidden; /* display: none 대신 visibility 사용 (크기 유지) */
+            opacity: 0;
+        }
+        
+        #map-container.visible {
+            visibility: visible;
+            opacity: 1;
         }
         
         #map {

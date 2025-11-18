@@ -4780,6 +4780,13 @@ class DxfPhotoEditor {
         }
         
         try {
+            // 지도 컨테이너를 먼저 보이게 설정 (Google Maps 초기화를 위해)
+            // visibility: hidden으로 크기는 유지하되 보이지 않게
+            if (this.mapContainer) {
+                this.mapContainer.style.visibility = 'visible';
+                this.mapContainer.style.opacity = '0';
+            }
+            
             // 기본 지도 중심 (남한 중심)
             const center = { lat: 36.3, lng: 127.8 };
             const zoom = 7;
@@ -4825,10 +4832,28 @@ class DxfPhotoEditor {
             this.map.mapTypes.set('브이월드일반', vworldRoadmapType);
             this.map.mapTypes.set('브이월드영상', vworldSatelliteType);
             
+            // 지도가 완전히 로드될 때까지 대기
+            await new Promise((resolve) => {
+                google.maps.event.addListenerOnce(this.map, 'idle', () => {
+                    console.log('✅ 지도 타일 로드 완료');
+                    resolve();
+                });
+            });
+            
+            // 초기화 후 다시 숨김 (showMap에서 표시)
+            if (this.mapContainer) {
+                this.mapContainer.style.visibility = 'hidden';
+                this.mapContainer.style.opacity = '0';
+            }
+            
             this.mapInitialized = true;
             console.log('✅ 지도 초기화 완료');
         } catch (error) {
             console.error('❌ 지도 초기화 실패:', error);
+            if (this.mapContainer) {
+                this.mapContainer.style.visibility = 'hidden';
+                this.mapContainer.style.opacity = '0';
+            }
         }
     }
     
@@ -4878,21 +4903,29 @@ class DxfPhotoEditor {
             return;
         }
         
-        this.map.setMapTypeId(mapTypeId);
-        this.currentMapType = mapType;
-        
-        // 지도 컨테이너 표시
-        this.mapContainer.style.display = 'block';
+        // 지도 컨테이너를 먼저 표시 (resize 이벤트를 위해)
+        this.mapContainer.style.visibility = 'visible';
+        this.mapContainer.style.opacity = '1';
+        this.mapContainer.classList.add('visible');
         
         // SVG 배경을 투명하게 (이미 CSS에서 설정됨)
         this.svg.style.background = 'transparent';
         
-        // 지도 크기 조정 (resize 이벤트 발생)
+        // 지도 타입 설정
+        this.map.setMapTypeId(mapTypeId);
+        this.currentMapType = mapType;
+        
+        // 지도 크기 조정 (resize 이벤트 발생) - 약간의 지연 후
         setTimeout(() => {
             if (this.map && window.google && window.google.maps) {
                 google.maps.event.trigger(this.map, 'resize');
+                // 지도 중심 재설정 (타일이 제대로 로드되도록)
+                const center = this.map.getCenter();
+                if (center) {
+                    this.map.setCenter(center);
+                }
             }
-        }, 100);
+        }, 200);
         
         console.log(`✅ 지도 표시: ${mapType}`);
         this.showToast(`🗺️ ${mapType === 'google' ? '구글맵' : '브이월드'} 표시`);
@@ -4906,7 +4939,9 @@ class DxfPhotoEditor {
             return;
         }
         
-        this.mapContainer.style.display = 'none';
+        this.mapContainer.style.visibility = 'hidden';
+        this.mapContainer.style.opacity = '0';
+        this.mapContainer.classList.remove('visible');
         this.currentMapType = null;
         
         // SVG 배경 복원
