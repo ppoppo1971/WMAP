@@ -73,6 +73,7 @@ class DxfPhotoEditor {
             isDragging: false,
             isPinching: false,
             wasDragging: false,  // 터치 종료 후 클릭 이벤트 방지용
+            wasPinching: false,  // 핀치줌 종료 후 클릭 이벤트 방지용
             startX: 0,
             startY: 0,
             lastTouch: null,  // { x, y } 객체로 관리
@@ -3713,6 +3714,11 @@ class DxfPhotoEditor {
                 // 스케일 팩터
                 const scaleFactor = currentDistance / this.touchState.lastPinchDistance;
                 
+                // 핀치줌이 실제로 발생했음을 표시 (거리 변화가 충분히 클 때만)
+                if (Math.abs(scaleFactor - 1.0) > 0.01) {
+                    this.touchState.wasPinching = true;
+                }
+                
                 // 중심점을 ViewBox 좌표로 변환
                 const rect = this.getCachedRect();
                 const centerX = ((centerScreenX - rect.left) / rect.width) * this.viewBox.width + this.viewBox.x;
@@ -3774,7 +3780,12 @@ class DxfPhotoEditor {
             }
             
             // 사진 클릭 또는 더블탭 감지
-            if (!this.longPressTriggered && e.changedTouches.length > 0) {
+            // 핀치줌이나 드래그가 있었으면 탭으로 처리하지 않음
+            if (!this.longPressTriggered && 
+                !this.touchState.wasDragging && 
+                !this.touchState.wasPinching && 
+                !this.touchState.isPinching &&
+                e.changedTouches.length > 0) {
                 const touch = e.changedTouches[0];
                 const isTap = this.isTapGesture(touch);
                 
@@ -3817,6 +3828,14 @@ class DxfPhotoEditor {
                 }, 100);
             }
             
+            // 핀치줌 중이었다면 wasPinching 플래그 설정 (클릭 이벤트 방지)
+            if (this.touchState.isPinching) {
+                this.touchState.wasPinching = true;
+                setTimeout(() => {
+                    this.touchState.wasPinching = false;
+                }, 100);
+            }
+            
             // rect 캐시 무효화 (ViewBox가 변경되었을 수 있음)
             this.cachedRect = null;
             
@@ -3832,6 +3851,14 @@ class DxfPhotoEditor {
             this.cancelLongPress();
             
             const touch = touches[0];
+            
+            // 핀치줌이 끝났음을 표시
+            if (this.touchState.isPinching) {
+                this.touchState.wasPinching = true;
+                setTimeout(() => {
+                    this.touchState.wasPinching = false;
+                }, 100);
+            }
             
             // 드래그 재시작 준비
             this.touchState.isDragging = false; // 드래그 재시작 방지 (핀치→팬 전환 시 끊김 방지)
@@ -3971,22 +3998,23 @@ class DxfPhotoEditor {
 
         const clickX = clientX - rect.left;
         const clickY = clientY - rect.top;
-        const padding = 5;
+        
+        // 실제 렌더링 크기와 동일하게 설정 (drawTexts에서 사용하는 값)
+        const fontSize = 9;
+        const padding = 3; // 텍스트 영역을 더 정확하게 (5px에서 3px로 축소)
 
         for (let i = this.texts.length - 1; i >= 0; i--) {
             const textObj = this.texts[i];
             const { x: screenX, y: screenY } = this.viewToCanvasCoords(textObj.x, textObj.y);
-            const fontScale = this.viewBox.width !== 0 ? (textObj.fontSize / this.viewBox.width) : 0;
-            let fontSize = fontScale * rect.width;
-            if (!isFinite(fontSize) || fontSize <= 0) {
-                fontSize = 12;
-            }
 
+            // 실제 렌더링과 동일한 폰트 설정으로 텍스트 너비 측정
             this.ctx.save();
             this.ctx.font = `bold ${fontSize}px -apple-system, sans-serif`;
             const textWidth = this.ctx.measureText(textObj.text || '').width;
             this.ctx.restore();
 
+            // 텍스트는 중앙 정렬로 그려지므로 (textAlign = 'center', textBaseline = 'middle')
+            // 클릭 영역을 정확하게 계산
             const halfWidth = textWidth / 2;
             const halfHeight = fontSize / 2;
             const left = screenX - halfWidth - padding;
@@ -3994,6 +4022,7 @@ class DxfPhotoEditor {
             const top = screenY - halfHeight - padding;
             const bottom = screenY + halfHeight + padding;
 
+            // 클릭 위치가 텍스트 영역 내에 있는지 정확히 확인
             if (clickX >= left && clickX <= right && clickY >= top && clickY <= bottom) {
                 if (openModal) {
                     this.openTextEditModal(textObj.id);
