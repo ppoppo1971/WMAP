@@ -844,6 +844,7 @@ class DxfPhotoEditor {
         const imageSizeCloseBtn = document.getElementById('image-size-close');
         const size500KBBtn = document.getElementById('size-500kb');
         const size1MBBtn = document.getElementById('size-1mb');
+        const size2MBBtn = document.getElementById('size-2mb');
         const sizeOriginalBtn = document.getElementById('size-original');
         
         if (imageSizeCloseBtn) {
@@ -861,6 +862,12 @@ class DxfPhotoEditor {
         if (size1MBBtn) {
             size1MBBtn.addEventListener('click', () => {
                 this.setImageSize('1MB');
+            });
+        }
+        
+        if (size2MBBtn) {
+            size2MBBtn.addEventListener('click', () => {
+                this.setImageSize('2MB');
             });
         }
         
@@ -2042,6 +2049,32 @@ class DxfPhotoEditor {
                 console.log(`  ${i}. ${entity.type}: color=${entity.color}, colorIndex=${entity.colorIndex}`);
             });
         }
+        
+        // ⭐ 선 두께 정보 확인 (처음 10개 엔티티)
+        if (this.dxfData.entities && this.dxfData.entities.length > 0) {
+            console.log('\n📏 엔티티 선 두께 정보 (처음 10개):');
+            const lineEntities = this.dxfData.entities.filter(e => 
+                e.type === 'LINE' || e.type === 'POLYLINE' || e.type === 'LWPOLYLINE'
+            ).slice(0, 10);
+            
+            if (lineEntities.length > 0) {
+                lineEntities.forEach((entity, i) => {
+                    const lineweight = entity.lineweight;
+                    const constantWidth = entity.constantWidth;
+                    const hasLineweight = 'lineweight' in entity;
+                    const hasConstantWidth = 'constantWidth' in entity;
+                    
+                    console.log(`  ${i}. ${entity.type} [${entity.layer || 'N/A'}]`);
+                    console.log(`     lineweight: ${lineweight} (존재: ${hasLineweight}, 타입: ${typeof lineweight})`);
+                    console.log(`     constantWidth: ${constantWidth} (존재: ${hasConstantWidth}, 타입: ${typeof constantWidth})`);
+                    console.log(`     전체 속성:`, Object.keys(entity).filter(k => 
+                        k.includes('weight') || k.includes('Width') || k.includes('width')
+                    ));
+                });
+            } else {
+                console.log('  → LINE/POLYLINE 엔티티가 없습니다.');
+            }
+        }
             
         // 레이어 정보 표시 (상세)
         if (this.dxfData.tables) {
@@ -2436,15 +2469,23 @@ class DxfPhotoEditor {
         line.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
         // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
-        const lineweight = (entity.lineweight >= 0) ? entity.lineweight : 0;
-        const constantWidth = entity.constantWidth || 0;
-        const actualWidth = Math.max(lineweight, constantWidth);
+        // ⭐ lineweight가 undefined인 경우 처리 개선
+        const lineweight = (entity.lineweight !== undefined && entity.lineweight !== null && entity.lineweight >= 0) 
+            ? entity.lineweight 
+            : (entity.lineweight === undefined || entity.lineweight === null ? -1 : 0);
+        const constantWidth = (entity.constantWidth !== undefined && entity.constantWidth !== null) 
+            ? entity.constantWidth 
+            : 0;
+        const actualWidth = Math.max(lineweight >= 0 ? lineweight : 0, constantWidth);
         const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
         
         // 디버그: 첫 30개 로그 (더 많이 출력)
         if (!this._lineDebugCount) this._lineDebugCount = 0;
         if (this._lineDebugCount < 30) {
-            console.log(`📏 LINE [${this._lineDebugCount}] layer="${entity.layer}" lineweight=${entity.lineweight} constantWidth=${entity.constantWidth} actualWidth=${actualWidth} → ${strokeWidth}px`);
+            console.log(`📏 LINE [${this._lineDebugCount}] layer="${entity.layer}"`);
+            console.log(`   lineweight=${entity.lineweight} (타입: ${typeof entity.lineweight}, 존재: ${'lineweight' in entity})`);
+            console.log(`   constantWidth=${entity.constantWidth} (타입: ${typeof entity.constantWidth}, 존재: ${'constantWidth' in entity})`);
+            console.log(`   계산: lineweight=${lineweight}, constantWidth=${constantWidth}, actualWidth=${actualWidth} → strokeWidth=${strokeWidth}px`);
             this._lineDebugCount++;
         }
         
@@ -2494,15 +2535,23 @@ class DxfPhotoEditor {
         element.setAttribute('stroke', this.getEntityColor(entity)); // 실제 색상
         
         // 조건부 선 굵기: 실제 굵기가 0 초과면 10px, 아니면 0.5px
-        const lineweight = (entity.lineweight >= 0) ? entity.lineweight : 0;
-        const constantWidth = entity.constantWidth || 0;
-        const actualWidth = Math.max(lineweight, constantWidth);
+        // ⭐ lineweight가 undefined인 경우 처리 개선
+        const lineweight = (entity.lineweight !== undefined && entity.lineweight !== null && entity.lineweight >= 0) 
+            ? entity.lineweight 
+            : (entity.lineweight === undefined || entity.lineweight === null ? -1 : 0);
+        const constantWidth = (entity.constantWidth !== undefined && entity.constantWidth !== null) 
+            ? entity.constantWidth 
+            : 0;
+        const actualWidth = Math.max(lineweight >= 0 ? lineweight : 0, constantWidth);
         const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
         
         // 디버그: 첫 30개 로그 (더 많이 출력)
         if (!this._polylineWeightDebugCount) this._polylineWeightDebugCount = 0;
         if (this._polylineWeightDebugCount < 30) {
-            console.log(`📏 POLYLINE [${this._polylineWeightDebugCount}] layer="${entity.layer}" lineweight=${entity.lineweight} constantWidth=${entity.constantWidth} actualWidth=${actualWidth} → ${strokeWidth}px`);
+            console.log(`📏 POLYLINE [${this._polylineWeightDebugCount}] layer="${entity.layer}"`);
+            console.log(`   lineweight=${entity.lineweight} (타입: ${typeof entity.lineweight}, 존재: ${'lineweight' in entity})`);
+            console.log(`   constantWidth=${entity.constantWidth} (타입: ${typeof entity.constantWidth}, 존재: ${'constantWidth' in entity})`);
+            console.log(`   계산: lineweight=${lineweight}, constantWidth=${constantWidth}, actualWidth=${actualWidth} → strokeWidth=${strokeWidth}px`);
             this._polylineWeightDebugCount++;
         }
         
@@ -3122,9 +3171,12 @@ class DxfPhotoEditor {
                 } else if (targetSize <= 1024 * 1024) {
                     // 1MB 이하: 1200px (기존 크기)
                     maxDimension = 1200;
-                } else {
-                    // 1MB 초과: 1600px (더 큰 크기 허용)
+                } else if (targetSize <= 2 * 1024 * 1024) {
+                    // 2MB 이하: 1600px (더 큰 크기 허용)
                     maxDimension = 1600;
+                } else {
+                    // 2MB 초과: 2000px (매우 큰 크기 허용)
+                    maxDimension = 2000;
                 }
                 
                 let width = image.width;
@@ -3169,6 +3221,8 @@ class DxfPhotoEditor {
                     estimatedQuality *= 0.85; // 500KB는 더 낮은 품질
                 } else if (targetSize <= 1024 * 1024) {
                     estimatedQuality *= 0.95; // 1MB는 약간 낮은 품질
+                } else if (targetSize <= 2 * 1024 * 1024) {
+                    estimatedQuality *= 1.0; // 2MB는 추정 품질 그대로
                 }
                 estimatedQuality = Math.max(0.3, Math.min(0.9, estimatedQuality));
                 
@@ -4294,6 +4348,8 @@ class DxfPhotoEditor {
                 return 500 * 1024;
             case '1MB':
                 return 1024 * 1024;
+            case '2MB':
+                return 2 * 1024 * 1024;
             case 'original':
                 return null; // 원본 (압축 없음)
             default:
@@ -4322,6 +4378,7 @@ class DxfPhotoEditor {
         const buttons = {
             '500KB': document.getElementById('size-500kb'),
             '1MB': document.getElementById('size-1mb'),
+            '2MB': document.getElementById('size-2mb'),
             'original': document.getElementById('size-original')
         };
         
@@ -4353,10 +4410,10 @@ class DxfPhotoEditor {
     
     /**
      * 이미지 용량 설정 변경
-     * @param {string} size - '500KB', '1MB', 'original' 중 하나
+     * @param {string} size - '500KB', '1MB', '2MB', 'original' 중 하나
      */
     setImageSize(size) {
-        if (!['500KB', '1MB', 'original'].includes(size)) {
+        if (!['500KB', '1MB', '2MB', 'original'].includes(size)) {
             console.error('❌ 잘못된 용량 설정:', size);
             return;
         }
