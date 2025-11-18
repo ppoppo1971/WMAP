@@ -128,6 +128,8 @@ class DxfPhotoEditor {
         this.map = null; // Google Maps 객체
         this.currentMapType = null; // 현재 지도 타입: 'google', 'vworld', null
         this.mapInitialized = false;
+        this.dxfBounds = null; // DXF 도면의 EPSG:5186 좌표 경계 { minX, minY, maxX, maxY }
+        this.dxfBoundsWGS84 = null; // 변환된 WGS84 좌표 경계 { minLat, minLng, maxLat, maxLng }
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -2583,8 +2585,16 @@ class DxfPhotoEditor {
         if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
             console.warn('유효한 경계를 계산할 수 없습니다. 기본 뷰 사용.');
             this.viewBox = { x: -500, y: -500, width: 1000, height: 1000 };
+            this.dxfBounds = null;
+            this.dxfBoundsWGS84 = null;
             return;
         }
+        
+        // DXF 경계 저장 (EPSG:5186 좌표)
+        this.dxfBounds = { minX, minY, maxX, maxY };
+        
+        // EPSG:5186을 WGS84로 변환
+        this.convertDxfBoundsToWGS84();
         
         const dxfWidth = maxX - minX;
         const dxfHeight = maxY - minY;
@@ -4772,6 +4782,71 @@ class DxfPhotoEditor {
     }
     
     /**
+     * EPSG:5186 좌표를 WGS84로 변환
+     * @param {number} x - EPSG:5186 X 좌표
+     * @param {number} y - EPSG:5186 Y 좌표
+     * @returns {Object} { lng, lat } WGS84 좌표
+     */
+    convert5186ToWGS84(x, y) {
+        if (typeof proj4 === 'undefined') {
+            console.error('❌ proj4 라이브러리가 로드되지 않았습니다');
+            return null;
+        }
+        
+        try {
+            // EPSG:5186 정의 (한국 중부원점)
+            proj4.defs('EPSG:5186', '+proj=tmerc +lat_0=38 +lon_0=127 +k=1 +x_0=200000 +y_0=600000 +ellps=GRS80 +units=m +no_defs');
+            
+            // EPSG:4326 정의 (WGS84)
+            proj4.defs('EPSG:4326', '+proj=longlat +datum=WGS84 +no_defs');
+            
+            // 좌표 변환
+            const [lng, lat] = proj4('EPSG:5186', 'EPSG:4326', [x, y]);
+            
+            return { lng, lat };
+        } catch (error) {
+            console.error('❌ 좌표 변환 실패:', error);
+            return null;
+        }
+    }
+    
+    /**
+     * DXF 도면 경계를 WGS84로 변환
+     */
+    convertDxfBoundsToWGS84() {
+        if (!this.dxfBounds) {
+            return;
+        }
+        
+        const { minX, minY, maxX, maxY } = this.dxfBounds;
+        
+        // 네 모서리 좌표 변환
+        const bottomLeft = this.convert5186ToWGS84(minX, minY);
+        const bottomRight = this.convert5186ToWGS84(maxX, minY);
+        const topLeft = this.convert5186ToWGS84(minX, maxY);
+        const topRight = this.convert5186ToWGS84(maxX, maxY);
+        
+        if (!bottomLeft || !bottomRight || !topLeft || !topRight) {
+            console.warn('⚠️ 좌표 변환 실패 - 지도 위치를 설정할 수 없습니다');
+            this.dxfBoundsWGS84 = null;
+            return;
+        }
+        
+        // 최소/최대 위경도 계산
+        const lngs = [bottomLeft.lng, bottomRight.lng, topLeft.lng, topRight.lng];
+        const lats = [bottomLeft.lat, bottomRight.lat, topLeft.lat, topRight.lat];
+        
+        this.dxfBoundsWGS84 = {
+            minLng: Math.min(...lngs),
+            maxLng: Math.max(...lngs),
+            minLat: Math.min(...lats),
+            maxLat: Math.max(...lats)
+        };
+        
+        console.log('✅ DXF 경계 WGS84 변환 완료:', this.dxfBoundsWGS84);
+    }
+    
+    /**
      * 지도 초기화
      */
     async initMap() {
@@ -4788,9 +4863,35 @@ class DxfPhotoEditor {
                 this.mapContainer.style.display = 'block';
             }
             
-            // 기본 지도 중심 (남한 중심)
-            const center = { lat: 36.3, lng: 127.8 };
-            const zoom = 7;
+            // 지도 중심 및 줌 설정
+            let center = { lat: 36.3, lng: 127.8 }; // 기본값: 남한 중심
+            let zoom = 7;
+            
+            // DXF 도면 경계가 있으면 해당 위치로 설정
+            if (this.dxfBoundsWGS84) {
+                const { minLat, maxLat, minLng, maxLng } = this.dxfBoundsWGS84;
+                center = {
+                    lat: (minLat + maxLat) / 2,
+                    lng: (minLng + maxLng) / 2
+                };
+                
+                // 경계 크기에 따라 줌 레벨 계산
+                const latDiff = maxLat - minLat;
+                const lngDiff = maxLng - minLng;
+                const maxDiff = Math.max(latDiff, lngDiff);
+                
+                // 줌 레벨 추정 (경험적 공식)
+                if (maxDiff > 1) zoom = 8;
+                else if (maxDiff > 0.5) zoom = 9;
+                else if (maxDiff > 0.2) zoom = 10;
+                else if (maxDiff > 0.1) zoom = 11;
+                else if (maxDiff > 0.05) zoom = 12;
+                else if (maxDiff > 0.02) zoom = 13;
+                else if (maxDiff > 0.01) zoom = 14;
+                else zoom = 15;
+                
+                console.log('🗺️ DXF 도면 위치로 지도 설정:', { center, zoom, bounds: this.dxfBoundsWGS84 });
+            }
             
             console.log('🗺️ Google Maps 초기화 시작...', { center, zoom });
             
@@ -4939,25 +5040,54 @@ class DxfPhotoEditor {
         this.map.setMapTypeId(mapTypeId);
         this.currentMapType = mapType;
         
-        // 지도 크기 조정 (resize 이벤트 발생) - 약간의 지연 후
-        setTimeout(() => {
-            if (this.map && window.google && window.google.maps) {
-                console.log('🔄 지도 resize 이벤트 트리거');
-                google.maps.event.trigger(this.map, 'resize');
-                
-                // 지도 중심 재설정 (타일이 제대로 로드되도록)
-                const center = this.map.getCenter();
-                if (center) {
-                    console.log('📍 지도 중심 재설정:', center.lat(), center.lng());
-                    this.map.setCenter(center);
+        // DXF 도면 경계가 있으면 해당 영역으로 맞추기
+        if (this.dxfBoundsWGS84 && window.google && window.google.maps) {
+            const { minLat, maxLat, minLng, maxLng } = this.dxfBoundsWGS84;
+            const bounds = new google.maps.LatLngBounds(
+                new google.maps.LatLng(minLat, minLng),
+                new google.maps.LatLng(maxLat, maxLng)
+            );
+            
+            // 지도 크기 조정 후 bounds로 맞추기
+            setTimeout(() => {
+                if (this.map) {
+                    console.log('🔄 지도 resize 이벤트 트리거 및 bounds 설정');
+                    google.maps.event.trigger(this.map, 'resize');
+                    
+                    // bounds로 맞추기 (패딩 추가)
+                    this.map.fitBounds(bounds, {
+                        padding: { top: 50, right: 50, bottom: 50, left: 50 }
+                    });
+                    
+                    console.log('📍 DXF 도면 경계로 지도 맞춤 완료');
+                    
+                    // 타일 로드 확인을 위한 idle 이벤트 리스너
+                    google.maps.event.addListenerOnce(this.map, 'idle', () => {
+                        console.log('✅ 지도 타일 로드 완료 (showMap 후)');
+                    });
                 }
-                
-                // 타일 로드 확인을 위한 idle 이벤트 리스너
-                google.maps.event.addListenerOnce(this.map, 'idle', () => {
-                    console.log('✅ 지도 타일 로드 완료 (showMap 후)');
-                });
-            }
-        }, 300);
+            }, 300);
+        } else {
+            // 지도 크기 조정 (resize 이벤트 발생) - 약간의 지연 후
+            setTimeout(() => {
+                if (this.map && window.google && window.google.maps) {
+                    console.log('🔄 지도 resize 이벤트 트리거');
+                    google.maps.event.trigger(this.map, 'resize');
+                    
+                    // 지도 중심 재설정 (타일이 제대로 로드되도록)
+                    const center = this.map.getCenter();
+                    if (center) {
+                        console.log('📍 지도 중심 재설정:', center.lat(), center.lng());
+                        this.map.setCenter(center);
+                    }
+                    
+                    // 타일 로드 확인을 위한 idle 이벤트 리스너
+                    google.maps.event.addListenerOnce(this.map, 'idle', () => {
+                        console.log('✅ 지도 타일 로드 완료 (showMap 후)');
+                    });
+                }
+            }, 300);
+        }
         
         console.log(`✅ 지도 표시: ${mapType}`);
         this.showToast(`🗺️ ${mapType === 'google' ? '구글맵' : '브이월드'} 표시`);
