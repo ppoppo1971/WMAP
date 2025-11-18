@@ -3643,8 +3643,14 @@ class DxfPhotoEditor {
             const deltaViewX = (currentView.x - this.touchState.anchorView.x) * this.panSensitivity;
             const deltaViewY = (currentView.y - this.touchState.anchorView.y) * this.panSensitivity;
             
+            // ViewBox 이동 (크기는 유지)
+            const originalWidth = this.viewBox.width;
+            const originalHeight = this.viewBox.height;
             this.viewBox.x -= deltaViewX;
             this.viewBox.y -= deltaViewY;
+            // 크기 유지 (드래그 중 축소 방지)
+            this.viewBox.width = originalWidth;
+            this.viewBox.height = originalHeight;
             
             this.updateViewBox();
         }
@@ -3747,9 +3753,14 @@ class DxfPhotoEditor {
                 const viewDeltaX = (lastView.x - currentView.x) * this.panSensitivity;
                 const viewDeltaY = (lastView.y - currentView.y) * this.panSensitivity;
                 
-                // ViewBox 이동
+                // ViewBox 이동 (크기는 유지)
+                const originalWidth = this.viewBox.width;
+                const originalHeight = this.viewBox.height;
                 this.viewBox.x += viewDeltaX;
                 this.viewBox.y += viewDeltaY;
+                // 크기 유지 (드래그 중 축소 방지)
+                this.viewBox.width = originalWidth;
+                this.viewBox.height = originalHeight;
                 
                 // 즉시 업데이트 (requestAnimationFrame으로 throttle)
                 this.updateViewBox();
@@ -3989,8 +4000,10 @@ class DxfPhotoEditor {
      */
     zoomAt(centerX, centerY, factor) {
         // 새로운 크기 계산
-        const newWidth = this.viewBox.width * factor;
-        const newHeight = this.viewBox.height * factor;
+        // factor > 1: 확대 (viewBox 크기 감소) → viewBox.width / factor
+        // factor < 1: 축소 (viewBox 크기 증가) → viewBox.width / factor
+        const newWidth = this.viewBox.width / factor;
+        const newHeight = this.viewBox.height / factor;
         
         // 최소/최대 크기 제한
         const minSize = (this.originalViewBox?.width || 1000) * 0.01; // 최대 100배 확대
@@ -4325,6 +4338,7 @@ class DxfPhotoEditor {
     
     /**
      * 줌 (ViewBox 중심점 기준)
+     * @param {number} factor - 줌 배율 (1보다 크면 확대, 1보다 작으면 축소)
      */
     zoom(factor) {
         // ViewBox 중심점 계산
@@ -4332,7 +4346,10 @@ class DxfPhotoEditor {
         const centerY = this.viewBox.y + this.viewBox.height / 2;
         
         // zoomAt 메서드 사용 (중심점 기준 확대)
-        this.zoomAt(centerX, centerY, 1 / factor);
+        // factor가 1.2면 확대 (viewBox.width * (1/1.2) = 축소 → 반대로 해야 함)
+        // factor가 0.8이면 축소 (viewBox.width * (1/0.8) = 확대 → 반대로 해야 함)
+        // 따라서 1/factor가 아니라 factor를 직접 사용해야 함
+        this.zoomAt(centerX, centerY, factor);
         
         // 줌 버튼 사용 시 지도 동기화 (지도 모드일 때만)
         if (this.isMapMode && this.map && !this.syncingFromMap && this.dxfBoundsWGS84) {
