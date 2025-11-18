@@ -4960,11 +4960,14 @@ class DxfPhotoEditor {
                 })
             ]);
             
-            // 초기화 후 다시 숨김 (showMap에서 표시)
+            // 초기화 완료 - 지도는 showMap에서 표시할 때까지 숨김 상태 유지
+            // 하지만 display: none으로 하면 resize 이벤트가 제대로 작동하지 않으므로
+            // visibility: hidden으로 유지 (크기는 유지하되 보이지 않게)
             if (this.mapContainer) {
                 this.mapContainer.style.visibility = 'hidden';
                 this.mapContainer.style.opacity = '0';
-                this.mapContainer.style.display = 'none';
+                // display는 block으로 유지 (resize 이벤트를 위해)
+                this.mapContainer.style.display = 'block';
             }
             
             this.mapInitialized = true;
@@ -5027,10 +5030,14 @@ class DxfPhotoEditor {
         }
         
         // 지도 컨테이너를 먼저 완전히 표시 (resize 이벤트를 위해 필수)
+        // display는 이미 block이므로 visibility와 opacity만 변경
         this.mapContainer.style.display = 'block';
         this.mapContainer.style.visibility = 'visible';
         this.mapContainer.style.opacity = '1';
         this.mapContainer.classList.add('visible');
+        
+        // 약간의 지연 후 resize 이벤트 트리거 (렌더링 완료 대기)
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // SVG 배경을 투명하게 (이미 CSS에서 설정됨)
         this.svg.style.background = 'transparent';
@@ -5040,54 +5047,40 @@ class DxfPhotoEditor {
         this.map.setMapTypeId(mapTypeId);
         this.currentMapType = mapType;
         
-        // DXF 도면 경계가 있으면 해당 영역으로 맞추기
-        if (this.dxfBoundsWGS84 && window.google && window.google.maps) {
-            const { minLat, maxLat, minLng, maxLng } = this.dxfBoundsWGS84;
-            const bounds = new google.maps.LatLngBounds(
-                new google.maps.LatLng(minLat, minLng),
-                new google.maps.LatLng(maxLat, maxLng)
-            );
-            
-            // 지도 크기 조정 후 bounds로 맞추기
-            setTimeout(() => {
-                if (this.map) {
-                    console.log('🔄 지도 resize 이벤트 트리거 및 bounds 설정');
-                    google.maps.event.trigger(this.map, 'resize');
+        // 지도 크기 조정 (resize 이벤트 발생) - 약간의 지연 후
+        setTimeout(() => {
+            if (this.map && window.google && window.google.maps) {
+                console.log('🔄 지도 resize 이벤트 트리거');
+                google.maps.event.trigger(this.map, 'resize');
+                
+                // DXF 도면 경계가 있으면 해당 영역으로 맞추기
+                if (this.dxfBoundsWGS84) {
+                    const { minLat, maxLat, minLng, maxLng } = this.dxfBoundsWGS84;
+                    const bounds = new google.maps.LatLngBounds(
+                        new google.maps.LatLng(minLat, minLng),
+                        new google.maps.LatLng(maxLat, maxLng)
+                    );
                     
+                    console.log('📍 DXF 도면 경계로 지도 맞추기:', bounds);
                     // bounds로 맞추기 (패딩 추가)
                     this.map.fitBounds(bounds, {
                         padding: { top: 50, right: 50, bottom: 50, left: 50 }
                     });
-                    
-                    console.log('📍 DXF 도면 경계로 지도 맞춤 완료');
-                    
-                    // 타일 로드 확인을 위한 idle 이벤트 리스너
-                    google.maps.event.addListenerOnce(this.map, 'idle', () => {
-                        console.log('✅ 지도 타일 로드 완료 (showMap 후)');
-                    });
-                }
-            }, 300);
-        } else {
-            // 지도 크기 조정 (resize 이벤트 발생) - 약간의 지연 후
-            setTimeout(() => {
-                if (this.map && window.google && window.google.maps) {
-                    console.log('🔄 지도 resize 이벤트 트리거');
-                    google.maps.event.trigger(this.map, 'resize');
-                    
+                } else {
                     // 지도 중심 재설정 (타일이 제대로 로드되도록)
                     const center = this.map.getCenter();
                     if (center) {
                         console.log('📍 지도 중심 재설정:', center.lat(), center.lng());
                         this.map.setCenter(center);
                     }
-                    
-                    // 타일 로드 확인을 위한 idle 이벤트 리스너
-                    google.maps.event.addListenerOnce(this.map, 'idle', () => {
-                        console.log('✅ 지도 타일 로드 완료 (showMap 후)');
-                    });
                 }
-            }, 300);
-        }
+                
+                // 타일 로드 확인을 위한 idle 이벤트 리스너
+                google.maps.event.addListenerOnce(this.map, 'idle', () => {
+                    console.log('✅ 지도 타일 로드 완료 (showMap 후)');
+                });
+            }
+        }, 500);
         
         console.log(`✅ 지도 표시: ${mapType}`);
         this.showToast(`🗺️ ${mapType === 'google' ? '구글맵' : '브이월드'} 표시`);
