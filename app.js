@@ -132,6 +132,8 @@ class DxfPhotoEditor {
         this.dxfBoundsWGS84 = null; // 변환된 WGS84 좌표 경계 { minLat, minLng, maxLat, maxLng }
         this.mapBoundsListener = null; // 지도 bounds 변경 리스너
         this.isMapMode = false; // 지도 모드 여부
+        this.syncingFromMap = false; // 지도에서 도면으로 동기화 중인지 (무한 루프 방지)
+        this.syncingFromViewBox = false; // 도면에서 지도로 동기화 중인지 (무한 루프 방지)
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -2658,6 +2660,11 @@ class DxfPhotoEditor {
             
             // Canvas 사진만 다시 그리기 (빠름)
             this.drawPhotosCanvas();
+            
+            // 지도 모드일 때 지도 bounds도 함께 업데이트
+            if (this.isMapMode && this.map && !this.syncingFromMap && this.dxfBoundsWGS84) {
+                this.syncViewBoxToMapBounds();
+            }
         });
     }
     
@@ -5085,7 +5092,7 @@ class DxfPhotoEditor {
                     google.maps.event.removeListener(this.mapBoundsListener);
                 }
                 this.mapBoundsListener = google.maps.event.addListener(this.map, 'bounds_changed', () => {
-                    if (this.isMapMode && this.dxfBoundsWGS84) {
+                    if (this.isMapMode && this.dxfBoundsWGS84 && !this.syncingFromViewBox) {
                         this.syncMapBoundsToViewBox();
                     }
                 });
@@ -5105,6 +5112,86 @@ class DxfPhotoEditor {
         
         console.log(`✅ 지도 표시: ${mapType}`);
         this.showToast(`🗺️ ${mapType === 'google' ? '구글맵' : '브이월드'} 표시`);
+    }
+    
+    /**
+     * SVG viewBox를 지도 bounds로 동기화 (역방향)
+     * 도면 확대/축소/이동 시 지도도 함께 변경
+     */
+    syncViewBoxToMapBounds() {
+        if (!this.map || !this.dxfBounds || !this.dxfBoundsWGS84 || this.syncingFromMap) {
+            return;
+        }
+        
+        try {
+            this.syncingFromViewBox = true;
+            
+            // 현재 ViewBox의 중심점과 크기
+            const viewBoxCenterX = this.viewBox.x + this.viewBox.width / 2;
+            const viewBoxCenterY = -(this.viewBox.y + this.viewBox.height / 2); // Y축 반전 해제
+            
+            // DXF 경계 정보
+            const { minX, minY, maxX, maxY } = this.dxfBounds;
+            const { minLat, maxLat, minLng, maxLng } = this.dxfBoundsWGS84;
+            
+            // DXF 좌표 범위
+            const dxfWidth = maxX - minX;
+            const dxfHeight = maxY - minY;
+            
+            // DXF 위경도 범위
+            const dxfLatRange = maxLat - minLat;
+            const dxfLngRange = maxLng - minLng;
+            
+            // 스케일 비율
+            const scaleX = dxfLngRange / dxfWidth;
+            const scaleY = dxfLatRange / dxfHeight;
+            
+            // DXF 중심점
+            const dxfCenterX = (minX + maxX) / 2;
+            const dxfCenterY = (minY + maxY) / 2;
+            const dxfCenterLat = (minLat + maxLat) / 2;
+            const dxfCenterLng = (minLng + maxLng) / 2;
+            
+            // ViewBox 중심점을 DXF 좌표로 변환
+            const deltaX = viewBoxCenterX - dxfCenterX;
+            const deltaY = viewBoxCenterY - dxfCenterY;
+            
+            // 위경도로 변환
+            const deltaLng = deltaX * scaleX;
+            const deltaLat = deltaY * scaleY;
+            
+            // 지도 중심점 계산
+            const mapCenterLat = dxfCenterLat + deltaLat;
+            const mapCenterLng = dxfCenterLng + deltaLng;
+            
+            // ViewBox 크기를 위경도 범위로 변환
+            const mapLatRange = this.viewBox.height * scaleY;
+            const mapLngRange = this.viewBox.width * scaleX;
+            
+            // 지도 bounds 계산
+            const mapMinLat = mapCenterLat - mapLatRange / 2;
+            const mapMaxLat = mapCenterLat + mapLatRange / 2;
+            const mapMinLng = mapCenterLng - mapLngRange / 2;
+            const mapMaxLng = mapCenterLng + mapLngRange / 2;
+            
+            // 지도 bounds 설정
+            const bounds = new google.maps.LatLngBounds(
+                new google.maps.LatLng(mapMinLat, mapMinLng),
+                new google.maps.LatLng(mapMaxLat, mapMaxLng)
+            );
+            
+            // 지도 bounds 업데이트 (애니메이션 없이)
+            this.map.fitBounds(bounds);
+            
+            console.log('🔄 SVG viewBox → 지도 bounds 동기화:', {
+                viewBox: this.viewBox,
+                mapBounds: { minLat: mapMinLat, maxLat: mapMaxLat, minLng: mapMinLng, maxLng: mapMaxLng }
+            });
+        } catch (error) {
+            console.error('❌ viewBox → 지도 동기화 실패:', error);
+        } finally {
+            this.syncingFromViewBox = false;
+        }
     }
     
     /**
@@ -5188,10 +5275,12 @@ class DxfPhotoEditor {
                 height: mapDxfHeight
             };
             
-            // ViewBox 업데이트
-            this.updateViewBox();
+            // ViewBox 업데이트 (지도 동기화는 하지 않음 - 무한 루프 방지)
+            this.svg.setAttribute('viewBox', 
+                `${this.viewBox.x} ${this.viewBox.y} ${this.viewBox.width} ${this.viewBox.height}`);
+            this.drawPhotosCanvas();
             
-            console.log('🔄 지도 bounds와 SVG viewBox 동기화:', {
+            console.log('🔄 지도 bounds → SVG viewBox 동기화:', {
                 mapBounds: { minLat: mapMinLat, maxLat: mapMaxLat, minLng: mapMinLng, maxLng: mapMaxLng },
                 dxfBoundsWGS84: this.dxfBoundsWGS84,
                 dxfBounds: this.dxfBounds,
@@ -5200,6 +5289,8 @@ class DxfPhotoEditor {
             });
         } catch (error) {
             console.error('❌ 지도 bounds 동기화 실패:', error);
+        } finally {
+            this.syncingFromMap = false;
         }
     }
     
