@@ -119,13 +119,35 @@ DMAP - DXF 도면 사진 편집기 (UI)
             background: #e8e8e8;
         }
 
+        #map-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            display: none;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Google Maps 컨트롤 숨기기 */
+        .gm-style-cc,
+        .gm-style a[href^="https://maps.google.com"],
+        a[href^="https://maps.google.com/maps"] {
+            display: none !important;
+        }
+        
         #svg {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: #e8e8e8;
+            background: transparent; /* 지도가 보이도록 투명하게 */
             cursor: grab;
             touch-action: none; /* 앱 내부에서 직접 제어 */
             will-change: transform; /* GPU 가속 */
@@ -871,8 +893,14 @@ DMAP - DXF 도면 사진 편집기 (UI)
         <!-- 도면 뷰어 화면 -->
         <div id="viewer-screen" class="screen hidden">
             <div class="canvas-container" id="canvas-container">
-                <svg id="svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #e8e8e8;"></svg>
-                <canvas id="canvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+                <!-- 지도 레이어 (도면 아래) -->
+                <div id="map-container" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; display: none;">
+                    <div id="map" style="width: 100%; height: 100%;"></div>
+                </div>
+                <!-- SVG 레이어 (도면) -->
+                <svg id="svg" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: transparent; z-index: 1;"></svg>
+                <!-- Canvas 레이어 (사진/텍스트) -->
+                <canvas id="canvas" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: 2;"></canvas>
             </div>
         </div>
     </div>
@@ -909,6 +937,15 @@ DMAP - DXF 도면 사진 편집기 (UI)
         </button>
         <button class="slide-menu-item" id="menu-image-size">
             용량조정
+        </button>
+        <button class="slide-menu-item" id="menu-map-google">
+            🗺️ 구글맵
+        </button>
+        <button class="slide-menu-item" id="menu-map-vworld">
+            🛰️ 브이월드
+        </button>
+        <button class="slide-menu-item" id="menu-map-off">
+            지도끄기
         </button>
         <button class="slide-menu-item" id="menu-console">
             콘솔
@@ -1157,6 +1194,9 @@ DMAP - DXF 도면 사진 편집기 (UI)
             }
         }, 500);
     </script>
+    
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAMBSJ39taPtfZgkIocKzIx3rutrCcaMaI&libraries=geometry" async defer></script>
     
     <!-- Google Drive 모듈 (먼저 로드) -->
     <script src="google-drive.js"></script>

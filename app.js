@@ -54,6 +54,8 @@ class DxfPhotoEditor {
         this.svg = document.getElementById('svg');
         this.container = document.getElementById('canvas-container');
         this.photoMemoInput = document.getElementById('photo-memo-input');
+        this.mapContainer = document.getElementById('map-container');
+        this.mapElement = document.getElementById('map');
         
         // SVG 그룹 요소 생성
         this.svgGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -121,6 +123,11 @@ class DxfPhotoEditor {
         // 이미지 용량 설정 (기본값: 500KB)
         // '500KB', '1MB', 'original' 중 하나
         this.imageSizeSetting = localStorage.getItem('dmap:imageSize') || '500KB';
+        
+        // 지도 관련
+        this.map = null; // Google Maps 객체
+        this.currentMapType = null; // 현재 지도 타입: 'google', 'vworld', null
+        this.mapInitialized = false;
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -555,6 +562,9 @@ class DxfPhotoEditor {
         const menuFitViewBtn = document.getElementById('menu-fit-view');
         const menuCheckMissingBtn = document.getElementById('menu-check-missing');
         const menuImageSizeBtn = document.getElementById('menu-image-size');
+        const menuMapGoogleBtn = document.getElementById('menu-map-google');
+        const menuMapVworldBtn = document.getElementById('menu-map-vworld');
+        const menuMapOffBtn = document.getElementById('menu-map-off');
         const menuConsoleBtn = document.getElementById('menu-console');
         
         console.log('🔍 슬라이딩 메뉴 버튼 확인:', {
@@ -604,6 +614,39 @@ class DxfPhotoEditor {
             console.error('❌ menu-image-size 버튼을 찾을 수 없습니다!');
         }
         
+        if (menuMapGoogleBtn) {
+            menuMapGoogleBtn.addEventListener('click', (e) => {
+                console.log('✅ 구글맵 버튼 클릭됨!');
+                e.stopPropagation();
+                this.closeSlideMenu();
+                this.showMap('google');
+            });
+        } else {
+            console.error('❌ menu-map-google 버튼을 찾을 수 없습니다!');
+        }
+        
+        if (menuMapVworldBtn) {
+            menuMapVworldBtn.addEventListener('click', (e) => {
+                console.log('✅ 브이월드 버튼 클릭됨!');
+                e.stopPropagation();
+                this.closeSlideMenu();
+                this.showMap('vworld');
+            });
+        } else {
+            console.error('❌ menu-map-vworld 버튼을 찾을 수 없습니다!');
+        }
+        
+        if (menuMapOffBtn) {
+            menuMapOffBtn.addEventListener('click', (e) => {
+                console.log('✅ 지도끄기 버튼 클릭됨!');
+                e.stopPropagation();
+                this.closeSlideMenu();
+                this.hideMap();
+            });
+        } else {
+            console.error('❌ menu-map-off 버튼을 찾을 수 없습니다!');
+        }
+        
         if (menuConsoleBtn) {
             menuConsoleBtn.addEventListener('click', (e) => {
                 console.log('✅ 콘솔 버튼 클릭됨!');
@@ -646,7 +689,7 @@ class DxfPhotoEditor {
         }
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuImageSizeBtn, menuConsoleBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuImageSizeBtn, menuMapGoogleBtn, menuMapVworldBtn, menuMapOffBtn, menuConsoleBtn].forEach(btn => {
             if (btn) {
                 btn.addEventListener('touchstart', (e) => {
                     e.stopPropagation();
@@ -4726,6 +4769,151 @@ class DxfPhotoEditor {
         const sizeText = size === 'original' ? '원본' : size;
         this.showToast(`✅ 사진 용량 설정: ${sizeText}`);
         console.log(`📏 이미지 용량 설정 변경: ${size}`);
+    }
+    
+    /**
+     * 지도 초기화
+     */
+    async initMap() {
+        if (this.mapInitialized || !window.google || !window.google.maps) {
+            return;
+        }
+        
+        try {
+            // 기본 지도 중심 (남한 중심)
+            const center = { lat: 36.3, lng: 127.8 };
+            const zoom = 7;
+            
+            // Google Maps 객체 생성
+            this.map = new google.maps.Map(this.mapElement, {
+                zoom: zoom,
+                center: center,
+                mapTypeControl: false,
+                fullscreenControl: false,
+                streetViewControl: false,
+                zoomControl: false,
+                scaleControl: false,
+                rotateControl: false,
+                disableDefaultUI: true,
+                gestureHandling: 'greedy',
+                disableDoubleClickZoom: true,
+                clickableIcons: false,
+                mapTypeIds: ['roadmap', 'satellite', 'hybrid', '브이월드일반', '브이월드영상']
+            });
+            
+            // 브이월드 일반 지도 타일 레이어 정의
+            const vworldRoadmapType = new google.maps.ImageMapType({
+                getTileUrl: function(coord, zoom) {
+                    return 'https://xdworld.vworld.kr/2d/Base/service/' + zoom + '/' + coord.x + '/' + coord.y + '.png';
+                },
+                tileSize: new google.maps.Size(256, 256),
+                name: '브이월드일반',
+                maxZoom: 19
+            });
+            
+            // 브이월드 영상 지도 타일 레이어 정의
+            const vworldSatelliteType = new google.maps.ImageMapType({
+                getTileUrl: function(coord, zoom) {
+                    return 'https://xdworld.vworld.kr/2d/Satellite/service/' + zoom + '/' + coord.x + '/' + coord.y + '.jpeg';
+                },
+                tileSize: new google.maps.Size(256, 256),
+                name: '브이월드영상',
+                maxZoom: 19
+            });
+            
+            // 사용자 정의 지도 타입 추가
+            this.map.mapTypes.set('브이월드일반', vworldRoadmapType);
+            this.map.mapTypes.set('브이월드영상', vworldSatelliteType);
+            
+            this.mapInitialized = true;
+            console.log('✅ 지도 초기화 완료');
+        } catch (error) {
+            console.error('❌ 지도 초기화 실패:', error);
+        }
+    }
+    
+    /**
+     * 지도 표시
+     * @param {string} mapType - 'google' 또는 'vworld'
+     */
+    async showMap(mapType) {
+        if (!this.mapContainer || !this.mapElement) {
+            console.error('❌ 지도 컨테이너를 찾을 수 없습니다');
+            return;
+        }
+        
+        // Google Maps API 로드 대기
+        if (!window.google || !window.google.maps) {
+            console.log('⏳ Google Maps API 로드 대기 중...');
+            let retries = 0;
+            while (!window.google || !window.google.maps) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                retries++;
+                if (retries > 100) { // 10초 대기
+                    console.error('❌ Google Maps API 로드 실패');
+                    this.showToast('❌ 지도를 불러올 수 없습니다');
+                    return;
+                }
+            }
+        }
+        
+        // 지도 초기화
+        if (!this.mapInitialized) {
+            await this.initMap();
+        }
+        
+        if (!this.map) {
+            console.error('❌ 지도 객체가 초기화되지 않았습니다');
+            return;
+        }
+        
+        // 지도 타입 설정
+        let mapTypeId;
+        if (mapType === 'google') {
+            mapTypeId = 'satellite'; // 구글 위성 지도
+        } else if (mapType === 'vworld') {
+            mapTypeId = '브이월드영상'; // 브이월드 위성 지도
+        } else {
+            console.error('❌ 잘못된 지도 타입:', mapType);
+            return;
+        }
+        
+        this.map.setMapTypeId(mapTypeId);
+        this.currentMapType = mapType;
+        
+        // 지도 컨테이너 표시
+        this.mapContainer.style.display = 'block';
+        
+        // SVG 배경을 투명하게 (이미 CSS에서 설정됨)
+        this.svg.style.background = 'transparent';
+        
+        // 지도 크기 조정 (resize 이벤트 발생)
+        setTimeout(() => {
+            if (this.map && window.google && window.google.maps) {
+                google.maps.event.trigger(this.map, 'resize');
+            }
+        }, 100);
+        
+        console.log(`✅ 지도 표시: ${mapType}`);
+        this.showToast(`🗺️ ${mapType === 'google' ? '구글맵' : '브이월드'} 표시`);
+    }
+    
+    /**
+     * 지도 숨기기
+     */
+    hideMap() {
+        if (!this.mapContainer) {
+            return;
+        }
+        
+        this.mapContainer.style.display = 'none';
+        this.currentMapType = null;
+        
+        // SVG 배경 복원
+        this.svg.style.background = '#e8e8e8';
+        
+        console.log('✅ 지도 숨김');
+        this.showToast('🗺️ 지도 숨김');
     }
     
     /**
