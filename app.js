@@ -548,6 +548,7 @@ class DxfPhotoEditor {
         // 슬라이딩 메뉴 - 목록으로 돌아가기
         const menuBackBtn = document.getElementById('menu-back-to-list');
         const menuFitViewBtn = document.getElementById('menu-fit-view');
+        const menuCheckMissingBtn = document.getElementById('menu-check-missing');
         const menuConsoleBtn = document.getElementById('menu-console');
         
         menuBackBtn.addEventListener('click', (e) => {
@@ -561,6 +562,12 @@ class DxfPhotoEditor {
             this.closeSlideMenu();
             this.fitDxfToView();
             this.redraw();
+        });
+        
+        menuCheckMissingBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.closeSlideMenu();
+            this.checkMissingPhotos();
         });
         
         menuConsoleBtn.addEventListener('click', (e) => {
@@ -580,7 +587,7 @@ class DxfPhotoEditor {
         });
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuConsoleBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuConsoleBtn].forEach(btn => {
             btn.addEventListener('touchstart', (e) => {
                 e.stopPropagation();
             }, { passive: false });
@@ -2791,9 +2798,9 @@ class DxfPhotoEditor {
                 markerColor = hasMemo ? '#9B51E0' : '#FF0000'; // 보라색(메모) 또는 빨간색
                 markerRadius = 3.75; // 직경 7.5px (작음)
             } else {
-                // 업로드 실패/대기 → 초록색 (2배 크기) - 사용자 알림
+                // 업로드 실패/대기 → 초록색 (5배 크기) - 사용자 알림
                 markerColor = '#00C853'; // 초록색 (주의 필요)
-                markerRadius = 7.5; // 직경 15px (2배 크기)
+                markerRadius = 18.75; // 직경 37.5px (5배 크기)
             }
             
             // 원 그리기
@@ -3943,6 +3950,87 @@ class DxfPhotoEditor {
                 this.showToast('로그인이 만료되었습니다. Google Drive 버튼으로 다시 로그인하세요.');
             }
             this.showToast(`⚠️ 저장 실패: ${error.message}`);
+        }
+    }
+    
+    /**
+     * 사진 누락 확인 (Google Drive 메타데이터와 실제 파일 비교)
+     */
+    async checkMissingPhotos() {
+        console.log('🔍 사진 누락 확인 시작...');
+        
+        // Google Drive 파일이 있는지 확인
+        if (!window.currentDriveFile) {
+            this.showToast('⚠️ Google Drive에서 파일을 열어주세요');
+            return;
+        }
+        
+        if (!window.driveManager) {
+            this.showToast('⚠️ Google Drive Manager가 초기화되지 않았습니다');
+            return;
+        }
+        
+        this.showLoading(true, '사진 누락 확인 중...');
+        
+        try {
+            // 1. 메타데이터 로드
+            console.log('📝 메타데이터 로드 중...');
+            const metadata = await window.driveManager.loadMetadata(window.currentDriveFile.name);
+            
+            if (!metadata || !metadata.photos || metadata.photos.length === 0) {
+                this.showLoading(false);
+                this.showToast('ℹ️ 저장된 사진이 없습니다');
+                return;
+            }
+            
+            // 2. 실제 파일 목록 가져오기
+            console.log('📂 파일 목록 조회 중...');
+            const files = await window.driveManager.listFiles();
+            const fileNames = new Set(files.map(f => f.name));
+            
+            // 3. 누락된 사진 찾기
+            console.log('🔎 누락된 사진 검색 중...');
+            const missingPhotos = metadata.photos.filter(photo => {
+                return photo.fileName && !fileNames.has(photo.fileName);
+            });
+            
+            this.showLoading(false);
+            
+            // 4. 결과 표시
+            if (missingPhotos.length === 0) {
+                console.log('✅ 모든 사진이 정상적으로 저장됨');
+                alert('✅ 모든 사진이 정상적으로 저장되었습니다!\n\n' +
+                      `총 사진 개수: ${metadata.photos.length}개`);
+            } else {
+                console.warn(`⚠️ 누락된 사진: ${missingPhotos.length}개`);
+                console.log('누락된 사진 목록:', missingPhotos);
+                
+                const missingList = missingPhotos.map((photo, idx) => 
+                    `${idx + 1}. ${photo.fileName || '(파일명 없음)'}`
+                ).join('\n');
+                
+                alert(`⚠️ 누락된 사진이 발견되었습니다!\n\n` +
+                      `총 사진: ${metadata.photos.length}개\n` +
+                      `누락: ${missingPhotos.length}개\n\n` +
+                      `누락된 사진:\n${missingList}\n\n` +
+                      `💡 팁: 누락된 사진 위치는 초록색 큰 점으로 표시됩니다.`);
+                
+                // 5. 누락된 사진을 uploaded: false로 표시하여 초록색 점으로 렌더링
+                missingPhotos.forEach(missingPhoto => {
+                    const localPhoto = this.photos.find(p => p.id === missingPhoto.id);
+                    if (localPhoto) {
+                        localPhoto.uploaded = false;
+                    }
+                });
+                
+                // 화면 다시 그리기
+                this.scheduleRedraw();
+            }
+            
+        } catch (error) {
+            this.showLoading(false);
+            console.error('❌ 사진 누락 확인 실패:', error);
+            this.showToast(`❌ 확인 실패: ${error.message || '알 수 없는 오류'}`);
         }
     }
     
