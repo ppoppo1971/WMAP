@@ -145,30 +145,14 @@ DMAP - DXF 도면 사진 편집기 (UI)
         }
 
         /* SVG 내부 모든 요소의 선 굵기 강제 */
+        /* stroke-width는 JavaScript에서 동적으로 설정 (조건부 선 굵기) */
         #svg line,
         #svg polyline,
         #svg circle,
         #svg ellipse,
         #svg path,
         #svg polygon {
-            stroke-width: 0.3 !important;
-            vector-effect: non-scaling-stroke !important;
-        }
-        
-        /* 추가: 모든 SVG 요소 */
-        #svg * {
-            vector-effect: non-scaling-stroke !important;
-        }
-        
-        #svg line,
-        #svg polyline {
-            stroke-width: 0.3 !important; /* 선들은 모두 0.3 */
-        }
-        
-        #svg circle[fill="none"],
-        #svg ellipse[fill="none"],
-        #svg path[fill="none"] {
-            stroke-width: 0.3 !important; /* 채우기 없는 도형도 0.3 */
+            vector-effect: non-scaling-stroke;
         }
         
         /* POINT는 매우 작게 */

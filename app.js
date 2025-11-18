@@ -2341,14 +2341,21 @@ class DxfPhotoEditor {
         const actualWidth = Math.max(lineweight, constantWidth);
         const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
         
-        // 디버그: 첫 10개만 로그
+        // 디버그: 첫 30개 로그 (더 많이 출력)
         if (!this._lineDebugCount) this._lineDebugCount = 0;
-        if (this._lineDebugCount < 10) {
-            this.debugLog(`📏 LINE lineweight=${entity.lineweight} constantWidth=${constantWidth} actualWidth=${actualWidth} → ${strokeWidth}px`);
+        if (this._lineDebugCount < 30) {
+            console.log(`📏 LINE [${this._lineDebugCount}] layer="${entity.layer}" lineweight=${entity.lineweight} constantWidth=${entity.constantWidth} actualWidth=${actualWidth} → ${strokeWidth}px`);
             this._lineDebugCount++;
         }
         
-        line.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
+        // 디버그용 데이터 속성 추가
+        line.setAttribute('data-lineweight', entity.lineweight);
+        line.setAttribute('data-constantwidth', entity.constantWidth || 0);
+        line.setAttribute('data-actualwidth', actualWidth);
+        line.setAttribute('data-strokewidth', strokeWidth);
+        line.setAttribute('data-layer', entity.layer || '');
+        
+        line.setAttribute('style', `stroke-width: ${strokeWidth}px; vector-effect: non-scaling-stroke;`);
         
         line.setAttribute('stroke-linecap', 'round');
         
@@ -2392,14 +2399,21 @@ class DxfPhotoEditor {
         const actualWidth = Math.max(lineweight, constantWidth);
         const strokeWidth = (actualWidth > 0) ? 10 : 0.5;
         
-        // 디버그: 첫 10개만 로그
+        // 디버그: 첫 30개 로그 (더 많이 출력)
         if (!this._polylineWeightDebugCount) this._polylineWeightDebugCount = 0;
-        if (this._polylineWeightDebugCount < 10) {
-            this.debugLog(`📏 POLYLINE lineweight=${entity.lineweight} constantWidth=${constantWidth} actualWidth=${actualWidth} → ${strokeWidth}px`);
+        if (this._polylineWeightDebugCount < 30) {
+            console.log(`📏 POLYLINE [${this._polylineWeightDebugCount}] layer="${entity.layer}" lineweight=${entity.lineweight} constantWidth=${entity.constantWidth} actualWidth=${actualWidth} → ${strokeWidth}px`);
             this._polylineWeightDebugCount++;
         }
         
-        element.setAttribute('style', `stroke-width: ${strokeWidth}; vector-effect: non-scaling-stroke;`);
+        // 디버그용 데이터 속성 추가
+        element.setAttribute('data-lineweight', entity.lineweight);
+        element.setAttribute('data-constantwidth', entity.constantWidth || 0);
+        element.setAttribute('data-actualwidth', actualWidth);
+        element.setAttribute('data-strokewidth', strokeWidth);
+        element.setAttribute('data-layer', entity.layer || '');
+        
+        element.setAttribute('style', `stroke-width: ${strokeWidth}px; vector-effect: non-scaling-stroke;`);
         
         element.setAttribute('stroke-linejoin', 'round');
         element.setAttribute('stroke-linecap', 'round');
