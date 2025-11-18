@@ -907,6 +907,9 @@ DMAP - DXF 도면 사진 편집기 (UI)
         <button class="slide-menu-item" id="menu-check-missing">
             사진누락확인
         </button>
+        <button class="slide-menu-item" id="menu-image-size">
+            용량조정
+        </button>
         <button class="slide-menu-item" id="menu-console">
             콘솔
         </button>
@@ -1000,6 +1003,35 @@ DMAP - DXF 도면 사진 편집기 (UI)
             <div class="text-edit-actions">
                 <button class="btn btn-save" id="text-edit-save-btn">수정</button>
                 <button class="btn btn-delete" id="text-edit-delete-btn">제거</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 용량 조정 모달 -->
+    <div class="text-input-modal" id="image-size-modal">
+        <div class="text-input-content">
+            <div class="modal-header">
+                <h3>📏 사진 용량 조정</h3>
+                <span class="close-btn" id="image-size-close">&times;</span>
+            </div>
+            <div class="info-box" style="margin-bottom: 20px;">
+                <strong>현재 설정:</strong> <span id="current-size-display">500KB</span>
+                <br><br>
+                사진을 추가할 때 선택한 용량으로 자동 압축됩니다.
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <button class="btn" id="size-500kb" style="background: #007AFF; text-align: left; padding: 15px;">
+                    <strong>500KB</strong> (권장)
+                    <br><span style="font-size: 12px; opacity: 0.8;">빠른 업로드, 적은 저장 공간</span>
+                </button>
+                <button class="btn" id="size-1mb" style="background: #34C759; text-align: left; padding: 15px;">
+                    <strong>1MB</strong>
+                    <br><span style="font-size: 12px; opacity: 0.8;">더 나은 화질, 중간 용량</span>
+                </button>
+                <button class="btn" id="size-original" style="background: #FF9500; text-align: left; padding: 15px;">
+                    <strong>원본</strong>
+                    <br><span style="font-size: 12px; opacity: 0.8;">최고 화질, 큰 용량 (압축 없음)</span>
+                </button>
             </div>
         </div>
     </div>

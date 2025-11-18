@@ -117,6 +117,10 @@ class DxfPhotoEditor {
         this.texts = []; // { id, x, y, text, fontSize }
         this.metadataDirty = false;
         
+        // 이미지 용량 설정 (기본값: 500KB)
+        // '500KB', '1MB', 'original' 중 하나
+        this.imageSizeSetting = localStorage.getItem('dmap:imageSize') || '500KB';
+        
         // 렌더링 최적화
         this.redrawPending = false;
         this.updatePending = false;
@@ -549,12 +553,14 @@ class DxfPhotoEditor {
         const menuBackBtn = document.getElementById('menu-back-to-list');
         const menuFitViewBtn = document.getElementById('menu-fit-view');
         const menuCheckMissingBtn = document.getElementById('menu-check-missing');
+        const menuImageSizeBtn = document.getElementById('menu-image-size');
         const menuConsoleBtn = document.getElementById('menu-console');
         
         console.log('🔍 슬라이딩 메뉴 버튼 확인:', {
             menuBackBtn: !!menuBackBtn,
             menuFitViewBtn: !!menuFitViewBtn,
             menuCheckMissingBtn: !!menuCheckMissingBtn,
+            menuImageSizeBtn: !!menuImageSizeBtn,
             menuConsoleBtn: !!menuConsoleBtn
         });
         
@@ -584,6 +590,17 @@ class DxfPhotoEditor {
             });
         } else {
             console.error('❌ menu-check-missing 버튼을 찾을 수 없습니다!');
+        }
+        
+        if (menuImageSizeBtn) {
+            menuImageSizeBtn.addEventListener('click', (e) => {
+                console.log('✅ 용량조정 버튼 클릭됨!');
+                e.stopPropagation();
+                this.closeSlideMenu();
+                this.showImageSizeModal();
+            });
+        } else {
+            console.error('❌ menu-image-size 버튼을 찾을 수 없습니다!');
         }
         
         if (menuConsoleBtn) {
@@ -628,7 +645,7 @@ class DxfPhotoEditor {
         }
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuConsoleBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuImageSizeBtn, menuConsoleBtn].forEach(btn => {
             if (btn) {
                 btn.addEventListener('touchstart', (e) => {
                     e.stopPropagation();
@@ -820,6 +837,46 @@ class DxfPhotoEditor {
         if (textEditDeleteBtn) {
             textEditDeleteBtn.addEventListener('click', () => {
                 this.deleteSelectedText();
+            });
+        }
+        
+        // 용량 조정 모달 이벤트 리스너
+        const imageSizeCloseBtn = document.getElementById('image-size-close');
+        const size500KBBtn = document.getElementById('size-500kb');
+        const size1MBBtn = document.getElementById('size-1mb');
+        const sizeOriginalBtn = document.getElementById('size-original');
+        
+        if (imageSizeCloseBtn) {
+            imageSizeCloseBtn.addEventListener('click', () => {
+                this.closeImageSizeModal();
+            });
+        }
+        
+        if (size500KBBtn) {
+            size500KBBtn.addEventListener('click', () => {
+                this.setImageSize('500KB');
+            });
+        }
+        
+        if (size1MBBtn) {
+            size1MBBtn.addEventListener('click', () => {
+                this.setImageSize('1MB');
+            });
+        }
+        
+        if (sizeOriginalBtn) {
+            sizeOriginalBtn.addEventListener('click', () => {
+                this.setImageSize('original');
+            });
+        }
+        
+        // 용량 조정 모달 외부 클릭 시 닫기
+        const imageSizeModal = document.getElementById('image-size-modal');
+        if (imageSizeModal) {
+            imageSizeModal.addEventListener('click', (e) => {
+                if (e.target === imageSizeModal) {
+                    this.closeImageSizeModal();
+                }
             });
         }
         
@@ -2924,11 +2981,21 @@ class DxfPhotoEditor {
             const image = await this.loadImage(imageData);
             this.debugLog('   ✓ 이미지 로드 완료 (크기:', image.width, 'x', image.height, ')');
             
-            // 이미지 압축 (500KB 이하로)
+            // 이미지 압축 (설정된 용량에 따라)
             this.showToast('🔄 이미지 변환 중...');
             this.debugLog('3️⃣ 이미지 압축 시작...');
-            const compressedImageData = await this.compressImage(image, file.name, 500 * 1024); // 500KB
-            this.debugLog('   ✓ 이미지 압축 완료 (압축 크기:', compressedImageData.length, ')');
+            const targetSize = this.getImageTargetSize();
+            this.debugLog('   목표 용량:', targetSize === null ? '원본' : `${(targetSize / 1024).toFixed(0)}KB`);
+            
+            let compressedImageData;
+            if (targetSize === null) {
+                // 원본: 압축 없이 Base64만 변환
+                compressedImageData = imageData;
+                this.debugLog('   ✓ 원본 사용 (압축 없음, 크기:', (compressedImageData.length / 1024).toFixed(2), 'KB)');
+            } else {
+                compressedImageData = await this.compressImage(image, file.name, targetSize);
+                this.debugLog('   ✓ 이미지 압축 완료 (압축 크기:', (compressedImageData.length / 1024).toFixed(2), 'KB)');
+            }
             
             // 변환 완료 토스트
             this.showToast('✅ 변환 완료');
@@ -3033,7 +3100,7 @@ class DxfPhotoEditor {
     }
     
     /**
-     * 이미지 압축 (500KB 목표)
+     * 이미지 압축 (목표 용량에 따라 최적화)
      * 참조: 사진변환_참조.html의 compressImageTo100KB 함수 기반
      * @param {Image} image - 원본 이미지 객체
      * @param {string} fileName - 파일 이름
@@ -3046,8 +3113,20 @@ class DxfPhotoEditor {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // 최대 크기 제한 (긴 쪽 기준 1200px - 참조 파일은 1000px 사용)
-                const maxDimension = 1200;
+                // 목표 용량에 따라 초기 리사이즈 크기 결정 (압축 반복 감소)
+                // 작은 목표 용량일수록 더 작게 리사이즈하여 품질 조절 반복을 줄임
+                let maxDimension;
+                if (targetSize <= 500 * 1024) {
+                    // 500KB 이하: 800px (더 작게 리사이즈하여 압축 반복 감소)
+                    maxDimension = 800;
+                } else if (targetSize <= 1024 * 1024) {
+                    // 1MB 이하: 1200px (기존 크기)
+                    maxDimension = 1200;
+                } else {
+                    // 1MB 초과: 1600px (더 큰 크기 허용)
+                    maxDimension = 1600;
+                }
+                
                 let width = image.width;
                 let height = image.height;
                 
@@ -3074,30 +3153,64 @@ class DxfPhotoEditor {
                 // 500KB = 512000 bytes → Base64 길이는 약 700000자
                 const targetLength = Math.floor(targetSize * 1.37);
                 
-                // 품질을 조절하며 압축 (0.9부터 시작하여 감소)
-                let quality = 0.9;
+                // 목표 용량에 맞는 품질을 경험적으로 추정 (한 번에 계산)
+                // JPEG 압축률은 대략 품질^1.5 정도 (경험적 공식)
+                // 목표 용량 = 픽셀 수 * 품질^1.5 * 상수
+                const pixelCount = width * height;
+                const targetBytes = targetSize;
+                
+                // 초기 품질 추정 (경험적 공식)
+                // 품질 = (목표 용량 / 픽셀 수)^(1/1.5) * 조정 계수
+                let estimatedQuality = Math.pow(targetBytes / (pixelCount * 0.3), 1/1.5);
+                estimatedQuality = Math.max(0.3, Math.min(0.9, estimatedQuality)); // 0.3 ~ 0.9 범위로 제한
+                
+                // 목표 용량에 따라 미세 조정
+                if (targetSize <= 500 * 1024) {
+                    estimatedQuality *= 0.85; // 500KB는 더 낮은 품질
+                } else if (targetSize <= 1024 * 1024) {
+                    estimatedQuality *= 0.95; // 1MB는 약간 낮은 품질
+                }
+                estimatedQuality = Math.max(0.3, Math.min(0.9, estimatedQuality));
+                
+                this.debugLog(`   추정 품질: ${estimatedQuality.toFixed(2)} (목표: ${(targetSize / 1024).toFixed(0)}KB)`);
+                
+                // 한 번 압축
+                let quality = estimatedQuality;
                 let compressedData = canvas.toDataURL('image/jpeg', quality);
                 
-                this.debugLog(`   초기 압축 (품질 ${quality.toFixed(1)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
+                this.debugLog(`   첫 압축 (품질 ${quality.toFixed(2)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
                 
-                // 목표 크기보다 크면 품질을 낮춤
-                while (compressedData.length > targetLength && quality > 0.1) {
-                    quality -= 0.1;
+                // 목표 크기와 차이가 크면 한 번만 조정 (선형 보간)
+                if (compressedData.length > targetLength * 1.1) {
+                    // 목표보다 10% 이상 크면 품질 조정
+                    const ratio = targetLength / compressedData.length;
+                    quality = Math.max(0.2, quality * ratio * 0.9); // 약간 더 낮춤
                     compressedData = canvas.toDataURL('image/jpeg', quality);
-                    this.debugLog(`   재압축 (품질 ${quality.toFixed(1)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
+                    this.debugLog(`   조정 압축 (품질 ${quality.toFixed(2)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
+                } else if (compressedData.length < targetLength * 0.7 && quality < 0.9) {
+                    // 목표보다 30% 이상 작으면 품질을 약간 높임 (선택적)
+                    quality = Math.min(0.9, quality * 1.1);
+                    compressedData = canvas.toDataURL('image/jpeg', quality);
+                    this.debugLog(`   품질 향상 (품질 ${quality.toFixed(2)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
                 }
                 
-                // 여전히 크면 이미지 크기를 70%로 축소하고 다시 압축
-                if (compressedData.length > targetLength) {
-                    this.debugLog('   ⚠️ 품질 조정만으로 부족 - 이미지 크기 축소');
-                    width = Math.floor(width * 0.7);
-                    height = Math.floor(height * 0.7);
+                // 여전히 목표보다 크면 이미지 크기를 추가로 축소하고 한 번 더 압축
+                if (compressedData.length > targetLength * 1.2) {
+                    this.debugLog('   ⚠️ 품질 조정만으로 부족 - 이미지 크기 추가 축소');
+                    const scaleFactor = targetSize <= 500 * 1024 ? 0.65 : 0.75;
+                    width = Math.floor(width * scaleFactor);
+                    height = Math.floor(height * scaleFactor);
                     canvas.width = width;
                     canvas.height = height;
                     ctx.clearRect(0, 0, width, height);
                     ctx.drawImage(image, 0, 0, width, height);
-                    compressedData = canvas.toDataURL('image/jpeg', 0.7);
-                    this.debugLog(`   크기 축소 후 재압축: ${(compressedData.length / 1024).toFixed(2)}KB`);
+                    
+                    // 축소 후 품질 재추정
+                    const newPixelCount = width * height;
+                    quality = Math.pow(targetBytes / (newPixelCount * 0.3), 1/1.5);
+                    quality = Math.max(0.3, Math.min(0.8, quality));
+                    compressedData = canvas.toDataURL('image/jpeg', quality);
+                    this.debugLog(`   크기 축소 후 압축 (품질 ${quality.toFixed(2)}): ${(compressedData.length / 1024).toFixed(2)}KB`);
                 }
                 
                 const finalSizeKB = (compressedData.length / 1024).toFixed(2);
@@ -4100,7 +4213,23 @@ class DxfPhotoEditor {
     updateFileNameDisplay(fileName) {
         const fileNameText = document.getElementById('file-name-text');
         if (fileNameText) {
-            fileNameText.textContent = fileName;
+            // 현재 압축 용량 설정 표시
+            const sizeText = this.imageSizeSetting === 'original' ? '원본' : this.imageSizeSetting;
+            fileNameText.textContent = `${fileName} [${sizeText}]`;
+        }
+    }
+    
+    /**
+     * 압축 용량 표시만 업데이트 (파일명은 유지)
+     */
+    updateImageSizeDisplay() {
+        const fileNameText = document.getElementById('file-name-text');
+        if (fileNameText) {
+            // 기존 파일명 추출 (괄호 이전 부분)
+            const currentText = fileNameText.textContent;
+            const fileName = currentText.split(' [')[0] || currentText;
+            const sizeText = this.imageSizeSetting === 'original' ? '원본' : this.imageSizeSetting;
+            fileNameText.textContent = `${fileName} [${sizeText}]`;
         }
     }
     
@@ -4153,6 +4282,95 @@ class DxfPhotoEditor {
                 toast.remove();
             }
         }, 2500);
+    }
+    
+    /**
+     * 이미지 목표 용량 가져오기
+     * @returns {number|null} 목표 크기 (bytes) 또는 null (원본)
+     */
+    getImageTargetSize() {
+        switch (this.imageSizeSetting) {
+            case '500KB':
+                return 500 * 1024;
+            case '1MB':
+                return 1024 * 1024;
+            case 'original':
+                return null; // 원본 (압축 없음)
+            default:
+                return 500 * 1024; // 기본값
+        }
+    }
+    
+    /**
+     * 용량 조정 모달 표시
+     */
+    showImageSizeModal() {
+        const modal = document.getElementById('image-size-modal');
+        const currentDisplay = document.getElementById('current-size-display');
+        
+        if (!modal) {
+            console.error('❌ 용량 조정 모달을 찾을 수 없습니다');
+            return;
+        }
+        
+        // 현재 설정 표시
+        if (currentDisplay) {
+            currentDisplay.textContent = this.imageSizeSetting;
+        }
+        
+        // 현재 선택된 버튼 하이라이트
+        const buttons = {
+            '500KB': document.getElementById('size-500kb'),
+            '1MB': document.getElementById('size-1mb'),
+            'original': document.getElementById('size-original')
+        };
+        
+        Object.keys(buttons).forEach(key => {
+            const btn = buttons[key];
+            if (btn) {
+                if (key === this.imageSizeSetting) {
+                    btn.style.opacity = '1';
+                    btn.style.transform = 'scale(1.05)';
+                } else {
+                    btn.style.opacity = '0.7';
+                    btn.style.transform = 'scale(1)';
+                }
+            }
+        });
+        
+        modal.classList.add('active');
+    }
+    
+    /**
+     * 용량 조정 모달 닫기
+     */
+    closeImageSizeModal() {
+        const modal = document.getElementById('image-size-modal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+    }
+    
+    /**
+     * 이미지 용량 설정 변경
+     * @param {string} size - '500KB', '1MB', 'original' 중 하나
+     */
+    setImageSize(size) {
+        if (!['500KB', '1MB', 'original'].includes(size)) {
+            console.error('❌ 잘못된 용량 설정:', size);
+            return;
+        }
+        
+        this.imageSizeSetting = size;
+        localStorage.setItem('dmap:imageSize', size);
+        this.closeImageSizeModal();
+        
+        // 파일명 옆 용량 표시 업데이트
+        this.updateImageSizeDisplay();
+        
+        const sizeText = size === 'original' ? '원본' : size;
+        this.showToast(`✅ 사진 용량 설정: ${sizeText}`);
+        console.log(`📏 이미지 용량 설정 변경: ${size}`);
     }
     
     /**
