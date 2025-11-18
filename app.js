@@ -2223,14 +2223,42 @@ class DxfPhotoEditor {
             } else if (inEntity) {
                 if (line === '8' && i + 1 < lines.length) {
                     currentLayer = lines[i + 1].trim();
-                } else if (line === '43' && i + 1 < lines.length) {
+                } else if (line === '100' && i + 1 < lines.length && lines[i + 1].trim() === 'AcDbPolyline') {
+                    // AcDbPolyline 발견 - 이제 코드 43을 찾을 준비
+                    // AcDbPolyline 이후의 코드 순서: 90, 70, 43 (또는 다른 순서일 수 있음)
+                    // 코드 43을 찾기 위해 다음 몇 줄을 확인
+                    let foundAcDbPolyline = true;
+                    // AcDbPolyline 이후 코드 43 찾기 (최대 10줄까지 확인)
+                    for (let j = i + 2; j < Math.min(i + 20, lines.length); j++) {
+                        const nextLine = lines[j].trim();
+                        if (nextLine === '43' && j + 1 < lines.length) {
+                            try {
+                                const val = parseFloat(lines[j + 1].trim());
+                                if (!isNaN(val)) {
+                                    // 0 이상의 모든 값 저장 (0.04, 0.05 등 포함, 0도 포함하여 구분)
+                                    constantWidth = val;
+                                    if (currentLayer && (currentLayer.includes('턱낮춤') || currentLayer.includes('화단'))) {
+                                        console.log(`🔍 constantWidth 발견 (AcDbPolyline 이후): layer="${currentLayer}", line=${j+1}, value=${val}`);
+                                    }
+                                    break; // 찾았으므로 중단
+                                }
+                            } catch (e) {
+                                // 무시
+                            }
+                        } else if (nextLine === '10') {
+                            // 코드 10을 만나면 코드 43을 찾는 범위를 벗어남
+                            break;
+                        }
+                    }
+                } else if (line === '43' && i + 1 < lines.length && constantWidth === null) {
+                    // AcDbPolyline 이후 찾지 못한 경우, 일반적인 방법으로 찾기
                     try {
                         const val = parseFloat(lines[i + 1].trim());
                         if (!isNaN(val)) {
                             // 0 이상의 모든 값 저장 (0.04, 0.05 등 포함, 0도 포함하여 구분)
                             constantWidth = val;
                             if (currentLayer && (currentLayer.includes('턱낮춤') || currentLayer.includes('화단'))) {
-                                console.log(`🔍 constantWidth 발견: layer="${currentLayer}", line=${i+1}, value=${val}`);
+                                console.log(`🔍 constantWidth 발견 (일반): layer="${currentLayer}", line=${i+1}, value=${val}`);
                             }
                         }
                     } catch (e) {
@@ -2287,8 +2315,29 @@ class DxfPhotoEditor {
         
         // 2단계: 파싱된 엔티티와 매칭
         console.log(`📊 constantWidthMap 총 ${constantWidthMap.length}개 항목`);
-        if (constantWidthMap.length > 0) {
-            console.log('constantWidthMap 샘플 (처음 5개):', constantWidthMap.slice(0, 5));
+        
+        // 턱낮춤 레이어의 맵 항목 확인
+        const teuknabchumItems = constantWidthMap.filter(item => item.layer && item.layer.includes('턱낮춤'));
+        console.log(`📊 턱낮춤 레이어 맵 항목: ${teuknabchumItems.length}개`);
+        if (teuknabchumItems.length > 0) {
+            console.log('턱낮춤 맵 항목:', teuknabchumItems.map(item => ({
+                layer: item.layer,
+                constantWidth: item.constantWidth,
+                type: item.type,
+                firstVertex: item.firstVertex
+            })));
+        }
+        
+        // 화단 레이어의 맵 항목 확인
+        const hwadanItems = constantWidthMap.filter(item => item.layer && item.layer.includes('화단'));
+        console.log(`📊 화단 레이어 맵 항목: ${hwadanItems.length}개`);
+        if (hwadanItems.length > 0) {
+            console.log('화단 맵 항목 샘플 (처음 3개):', hwadanItems.slice(0, 3).map(item => ({
+                layer: item.layer,
+                constantWidth: item.constantWidth,
+                type: item.type,
+                firstVertex: item.firstVertex
+            })));
         }
         
         let mapIndex = 0;
@@ -2361,11 +2410,25 @@ class DxfPhotoEditor {
                 if (entity.layer && (entity.layer.includes('턱낮춤') || entity.layer.includes('화단'))) {
                     const matchType = bestMatchScore === 100 ? '정점 기반' : '순서 기반';
                     console.log(`✅ constantWidth 매칭 (${matchType}): layer="${entity.layer}", constantWidth=${bestMatch.constantWidth}, entityIndex=${entityIndex}, mapIndex=${bestMatchIndex}`);
+                    if (entity.layer.includes('턱낮춤')) {
+                        console.log(`   엔티티 첫 정점: (${entity.vertices && entity.vertices.length > 0 ? `${entity.vertices[0].x}, ${entity.vertices[0].y}` : '없음'})`);
+                        console.log(`   맵 첫 정점: (${bestMatch.firstVertex ? `${bestMatch.firstVertex.x}, ${bestMatch.firstVertex.y}` : '없음'})`);
+                    }
                 }
             }
             
             if (!matched && entity.layer && (entity.layer.includes('턱낮춤') || entity.layer.includes('화단'))) {
                 console.log(`❌ 매칭 실패: layer="${entity.layer}", type=${entity.type}, entityIndex=${entityIndex}, mapIndex=${mapIndex}`);
+                console.log(`   엔티티 첫 정점: (${entity.vertices && entity.vertices.length > 0 ? `${entity.vertices[0].x}, ${entity.vertices[0].y}` : '없음'})`);
+                // 같은 레이어의 맵 항목 찾기
+                const sameLayerItems = constantWidthMap.filter(item => item.type === entity.type && item.layer === entity.layer);
+                console.log(`   같은 레이어 맵 항목 개수: ${sameLayerItems.length}`);
+                if (sameLayerItems.length > 0) {
+                    console.log(`   같은 레이어 맵 항목 샘플:`, sameLayerItems.slice(0, 3).map(item => ({
+                        constantWidth: item.constantWidth,
+                        firstVertex: item.firstVertex
+                    })));
+                }
             }
         });
         
