@@ -574,7 +574,7 @@ class DxfPhotoEditor {
         const menuImageSizeBtn = document.getElementById('menu-image-size');
         const menuMapGoogleBtn = document.getElementById('menu-map-google');
         const menuMapVworldBtn = document.getElementById('menu-map-vworld');
-        const menuCurrentLocationBtn = document.getElementById('menu-current-location');
+        const currentLocationBtn = document.getElementById('current-location-btn');
         const menuConsoleBtn = document.getElementById('menu-console');
         
         console.log('🔍 슬라이딩 메뉴 버튼 확인:', {
@@ -656,15 +656,14 @@ class DxfPhotoEditor {
             console.error('❌ menu-map-vworld 버튼을 찾을 수 없습니다!');
         }
         
-        if (menuCurrentLocationBtn) {
-            menuCurrentLocationBtn.addEventListener('click', (e) => {
+        if (currentLocationBtn) {
+            currentLocationBtn.addEventListener('click', (e) => {
                 console.log('✅ 현재위치 버튼 클릭됨!');
                 e.stopPropagation();
-                this.closeSlideMenu();
                 this.showCurrentLocation();
             });
         } else {
-            console.error('❌ menu-current-location 버튼을 찾을 수 없습니다!');
+            console.error('❌ current-location-btn 버튼을 찾을 수 없습니다!');
         }
         
         if (menuConsoleBtn) {
@@ -709,7 +708,7 @@ class DxfPhotoEditor {
         }
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuImageSizeBtn, menuMapGoogleBtn, menuMapVworldBtn, menuCurrentLocationBtn, menuConsoleBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuImageSizeBtn, menuMapGoogleBtn, menuMapVworldBtn, menuConsoleBtn].forEach(btn => {
             if (btn) {
                 btn.addEventListener('touchstart', (e) => {
                     e.stopPropagation();
@@ -5159,7 +5158,12 @@ class DxfPhotoEditor {
                         }
                         this.boundsChangeTimeout = setTimeout(() => {
                             this.syncMapBoundsToViewBox();
+                            // 현재 위치 마커 가시성 확인 및 자동 제거
+                            this.checkCurrentLocationMarkerVisibility();
                         }, 100);
+                    } else {
+                        // 지도 모드가 아니어도 현재 위치 마커 가시성 확인
+                        this.checkCurrentLocationMarkerVisibility();
                     }
                 });
                 
@@ -5439,6 +5443,30 @@ class DxfPhotoEditor {
         if (this.currentLocationInfoWindow) {
             this.currentLocationInfoWindow.close();
             this.currentLocationInfoWindow = null;
+        }
+    }
+    
+    /**
+     * 현재 위치 마커 가시성 확인 및 자동 제거
+     * 마커가 화면 밖으로 나가면 자동으로 제거
+     */
+    checkCurrentLocationMarkerVisibility() {
+        if (this.currentLocationMarker && this.map) {
+            const bounds = this.map.getBounds();
+            const markerPosition = this.currentLocationMarker.getPosition();
+            
+            // 마커가 현재 지도 뷰의 경계 밖에 있는지 확인
+            if (bounds && markerPosition && !bounds.contains(markerPosition)) {
+                // 열린 정보창 닫기
+                if (this.currentLocationInfoWindow) {
+                    this.currentLocationInfoWindow.close();
+                    this.currentLocationInfoWindow = null;
+                }
+                // 마커가 뷰에서 벗어나면 자동으로 제거
+                this.currentLocationMarker.setMap(null);
+                this.currentLocationMarker = null;
+                console.log('📍 현재 위치 마커가 화면 밖으로 나가 제거됨');
+            }
         }
     }
     

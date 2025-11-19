@@ -928,6 +928,11 @@ DMAP - DXF 도면 사진 편집기 (UI)
             <button class="zoom-btn" id="zoom-in">+</button>
             <button class="zoom-btn" id="zoom-out">−</button>
         </div>
+        
+        <!-- 현재위치 버튼 (우측 하단 고정) -->
+        <button class="zoom-btn" id="current-location-btn" style="position: fixed !important; bottom: 20px !important; right: 20px !important; z-index: 9998 !important;">
+            📌
+        </button>
     </div>
     
     <!-- 슬라이딩 메뉴 (전역) -->
@@ -949,9 +954,6 @@ DMAP - DXF 도면 사진 편집기 (UI)
         </button>
         <button class="slide-menu-item" id="menu-map-vworld">
             브이월드
-        </button>
-        <button class="slide-menu-item" id="menu-current-location">
-            현재위치
         </button>
         <button class="slide-menu-item" id="menu-console">
             콘솔
