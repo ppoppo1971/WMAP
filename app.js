@@ -136,6 +136,8 @@ class DxfPhotoEditor {
         this.isMapMode = false; // 지도 모드 여부
         this.syncingFromMap = false; // 지도에서 도면으로 동기화 중인지 (무한 루프 방지)
         this.syncingFromViewBox = false; // 도면에서 지도로 동기화 중인지 (무한 루프 방지)
+        this.currentLocationMarker = null; // 현재 위치 마커
+        this.currentLocationInfoWindow = null; // 현재 위치 정보창
         
         // 렌더링 최적화
         this.redrawPending = false;
@@ -572,7 +574,7 @@ class DxfPhotoEditor {
         const menuImageSizeBtn = document.getElementById('menu-image-size');
         const menuMapGoogleBtn = document.getElementById('menu-map-google');
         const menuMapVworldBtn = document.getElementById('menu-map-vworld');
-        const menuMapOffBtn = document.getElementById('menu-map-off');
+        const menuCurrentLocationBtn = document.getElementById('menu-current-location');
         const menuConsoleBtn = document.getElementById('menu-console');
         
         console.log('🔍 슬라이딩 메뉴 버튼 확인:', {
@@ -627,7 +629,12 @@ class DxfPhotoEditor {
                 console.log('✅ 구글맵 버튼 클릭됨!');
                 e.stopPropagation();
                 this.closeSlideMenu();
-                this.showMap('google');
+                // 토글 기능: 현재 구글맵이 켜져있으면 끄고, 아니면 켜기
+                if (this.currentMapType === 'google') {
+                    this.hideMap();
+                } else {
+                    this.showMap('google');
+                }
             });
         } else {
             console.error('❌ menu-map-google 버튼을 찾을 수 없습니다!');
@@ -638,21 +645,26 @@ class DxfPhotoEditor {
                 console.log('✅ 브이월드 버튼 클릭됨!');
                 e.stopPropagation();
                 this.closeSlideMenu();
-                this.showMap('vworld');
+                // 토글 기능: 현재 브이월드가 켜져있으면 끄고, 아니면 켜기
+                if (this.currentMapType === 'vworld') {
+                    this.hideMap();
+                } else {
+                    this.showMap('vworld');
+                }
             });
         } else {
             console.error('❌ menu-map-vworld 버튼을 찾을 수 없습니다!');
         }
         
-        if (menuMapOffBtn) {
-            menuMapOffBtn.addEventListener('click', (e) => {
-                console.log('✅ 지도끄기 버튼 클릭됨!');
+        if (menuCurrentLocationBtn) {
+            menuCurrentLocationBtn.addEventListener('click', (e) => {
+                console.log('✅ 현재위치 버튼 클릭됨!');
                 e.stopPropagation();
                 this.closeSlideMenu();
-                this.hideMap();
+                this.showCurrentLocation();
             });
         } else {
-            console.error('❌ menu-map-off 버튼을 찾을 수 없습니다!');
+            console.error('❌ menu-current-location 버튼을 찾을 수 없습니다!');
         }
         
         if (menuConsoleBtn) {
@@ -697,7 +709,7 @@ class DxfPhotoEditor {
         }
         
         // 메뉴 아이템들 터치 이벤트에서 롱프레스 방지
-        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuImageSizeBtn, menuMapGoogleBtn, menuMapVworldBtn, menuMapOffBtn, menuConsoleBtn].forEach(btn => {
+        [menuBackBtn, menuFitViewBtn, menuCheckMissingBtn, menuImageSizeBtn, menuMapGoogleBtn, menuMapVworldBtn, menuCurrentLocationBtn, menuConsoleBtn].forEach(btn => {
             if (btn) {
                 btn.addEventListener('touchstart', (e) => {
                     e.stopPropagation();
@@ -5409,8 +5421,162 @@ class DxfPhotoEditor {
             this.updateViewBox();
         }
         
+        // 현재 위치 마커 제거
+        this.clearCurrentLocationMarker();
+        
         console.log('✅ 지도 숨김');
         this.showToast('🗺️ 지도 숨김');
+    }
+    
+    /**
+     * 현재 위치 마커 제거
+     */
+    clearCurrentLocationMarker() {
+        if (this.currentLocationMarker) {
+            this.currentLocationMarker.setMap(null);
+            this.currentLocationMarker = null;
+        }
+        if (this.currentLocationInfoWindow) {
+            this.currentLocationInfoWindow.close();
+            this.currentLocationInfoWindow = null;
+        }
+    }
+    
+    /**
+     * 현재 위치 표시
+     */
+    async showCurrentLocation() {
+        if (!this.map) {
+            this.showToast('지도를 먼저 켜주세요');
+            return;
+        }
+        
+        // 기존 마커 제거
+        this.clearCurrentLocationMarker();
+        
+        if (!navigator.geolocation) {
+            this.showToast('위치 정보를 사용할 수 없습니다');
+            return;
+        }
+        
+        // 모바일 감지
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        
+        // 위치 요청 옵션
+        const options = {
+            enableHighAccuracy: true, // GPS 사용
+            timeout: isMobile ? 15000 : 10000,
+            maximumAge: 0 // 캐시 사용 안 함
+        };
+        
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, options);
+            });
+            
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+            const timestamp = position.timestamp;
+            const currentLocation = { lat, lng };
+            
+            // 위치 정보 로깅
+            const now = new Date();
+            const positionTime = new Date(timestamp);
+            const timeDiff = (now - positionTime) / 1000;
+            
+            console.log('📍 위치 정보:', {
+                위도: lat.toFixed(6),
+                경도: lng.toFixed(6),
+                정확도: accuracy.toFixed(1) + 'm',
+                획득시간: positionTime.toLocaleTimeString('ko-KR'),
+                현재시간: now.toLocaleTimeString('ko-KR'),
+                시간차이: timeDiff.toFixed(1) + '초'
+            });
+            
+            // 정확도 경고
+            if (accuracy > 100) {
+                console.warn('⚠️ 위치 정확도가 낮습니다 (' + accuracy.toFixed(0) + 'm)');
+            }
+            
+            // 현재 위치 중심으로 확대
+            const currentZoom = this.map.getZoom();
+            this.map.setCenter(currentLocation);
+            this.map.setZoom(Math.max(currentZoom, 15));
+            
+            // 현재 위치 마커 생성
+            this.currentLocationMarker = new google.maps.Marker({
+                position: currentLocation,
+                map: this.map,
+                icon: {
+                    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="32" height="32">
+                            <text x="12" y="20" font-family="Arial, sans-serif" font-size="24" text-anchor="middle" fill="#FF0000">📌</text>
+                        </svg>
+                    `),
+                    scaledSize: new google.maps.Size(isMobile ? 28 : 32, isMobile ? 28 : 32),
+                    anchor: new google.maps.Point(isMobile ? 14 : 16, isMobile ? 14 : 16)
+                },
+                title: '현재 위치 (정확도: ' + accuracy.toFixed(0) + 'm)',
+                zIndex: 1000,
+                optimized: !isMobile
+            });
+            
+            // 마커 클릭 시 정보창 표시
+            this.currentLocationMarker.addListener('click', () => {
+                const infoContent = `
+                    <div style="padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                        <div style="font-weight: 700; font-size: 14px; margin-bottom: 8px;">📍 현재 위치</div>
+                        <div style="font-size: 12px; color: #666; line-height: 1.6;">
+                            <div>위도: ${lat.toFixed(6)}</div>
+                            <div>경도: ${lng.toFixed(6)}</div>
+                            <div>정확도: ${accuracy.toFixed(0)}m</div>
+                            <div>획득: ${positionTime.toLocaleTimeString('ko-KR')}</div>
+                            ${timeDiff > 10 ? '<div style="color: #ef4444;">⚠️ ' + timeDiff.toFixed(0) + '초 전 데이터</div>' : ''}
+                        </div>
+                    </div>
+                `;
+                
+                // 기존 정보창 닫기
+                if (this.currentLocationInfoWindow) {
+                    this.currentLocationInfoWindow.close();
+                }
+                
+                // 정보창 표시
+                this.currentLocationInfoWindow = new google.maps.InfoWindow({
+                    content: infoContent,
+                    maxWidth: isMobile ? 280 : 320
+                });
+                this.currentLocationInfoWindow.open(this.map, this.currentLocationMarker);
+                
+                // 줌 조정
+                this.map.setZoom(15);
+                this.map.panTo(currentLocation);
+            });
+            
+            console.log('✅ 현재 위치 표시 완료 (정확도: ' + accuracy.toFixed(0) + 'm)');
+            this.showToast('📍 현재 위치 표시 완료');
+            
+        } catch (error) {
+            console.error('❌ 위치 정보를 가져올 수 없습니다:', error);
+            let errorMessage = '위치 정보를 가져올 수 없습니다.';
+            
+            if (isMobile) {
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        errorMessage = '위치 접근 권한이 거부되었습니다. 브라우저 설정에서 위치 권한을 허용해주세요.';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        errorMessage = '위치 정보를 사용할 수 없습니다. 네트워크 연결을 확인해주세요.';
+                        break;
+                    case error.TIMEOUT:
+                        errorMessage = '위치 정보 요청 시간이 초과되었습니다. 다시 시도해주세요.';
+                        break;
+                }
+            }
+            
+            this.showToast(errorMessage);
+        }
     }
     
     /**
