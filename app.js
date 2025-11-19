@@ -136,6 +136,8 @@ class DxfPhotoEditor {
         this.isMapMode = false; // 지도 모드 여부
         this.syncingFromMap = false; // 지도에서 도면으로 동기화 중인지 (무한 루프 방지)
         this.syncingFromViewBox = false; // 도면에서 지도로 동기화 중인지 (무한 루프 방지)
+        this.mapOverlay = null; // 지도 좌표→픽셀 변환용 OverlayView
+        this.currentLocationData = null; // 현재 위치 정보 캐시
         this.currentLocationMarker = null; // 현재 위치 마커
         this.currentLocationInfoWindow = null; // 현재 위치 정보창
         
@@ -732,6 +734,41 @@ class DxfPhotoEditor {
         this.svg.addEventListener('touchstart', this.onTouchStart.bind(this), { passive: false });
         this.svg.addEventListener('touchmove', this.onTouchMove.bind(this), { passive: false });
         this.svg.addEventListener('touchend', this.onTouchEnd.bind(this), { passive: false });
+        
+        // 지도 컨테이너에서도 동일한 이벤트 처리 (지도 활성화 시 롱프레스/탭 유지)
+        if (this.mapContainer) {
+            this.mapContainer.addEventListener('touchstart', (e) => {
+                if (!this.isMapMode) return;
+                this.onTouchStart(e);
+            }, { passive: false });
+            this.mapContainer.addEventListener('touchmove', (e) => {
+                if (!this.isMapMode) return;
+                this.onTouchMove(e);
+            }, { passive: false });
+            this.mapContainer.addEventListener('touchend', (e) => {
+                if (!this.isMapMode) return;
+                this.onTouchEnd(e);
+            }, { passive: false });
+            
+            this.mapContainer.addEventListener('mousedown', (e) => {
+                if (!this.isMapMode) return;
+                this.onMouseDown(e);
+            });
+            this.mapContainer.addEventListener('mousemove', (e) => {
+                if (!this.isMapMode) return;
+                this.onMouseMove(e);
+            });
+            this.mapContainer.addEventListener('mouseup', (e) => {
+                if (!this.isMapMode) return;
+                this.onMouseUp(e);
+            });
+            
+            this.mapContainer.addEventListener('contextmenu', (e) => {
+                if (this.isMapMode) {
+                    e.preventDefault();
+                }
+            });
+        }
         
         // 사진 클릭은 SVG 클릭 이벤트에서 처리 (Canvas는 pointer-events: none 유지)
         this.svg.addEventListener('click', this.onCanvasClick.bind(this));
@@ -3881,6 +3918,8 @@ class DxfPhotoEditor {
                         const tappedPhoto = this.checkPhotoClick(touch.clientX, touch.clientY, { openModal: false });
                         if (tappedPhoto) {
                             this.queueSingleTapAction(() => this.openPhotoViewModal(tappedPhoto.id));
+                        } else if (this.isTapOnCurrentLocation(touch.clientX, touch.clientY)) {
+                            this.queueSingleTapAction(() => this.openCurrentLocationInfo());
                         } else {
                             const tappedText = this.checkTextClick(touch.clientX, touch.clientY, { openModal: false });
                             if (tappedText) {
@@ -4982,6 +5021,15 @@ class DxfPhotoEditor {
             
             console.log('✅ Google Maps 객체 생성 완료');
             
+            // 지도 좌표 → 화면 좌표 변환용 OverlayView
+            if (!this.mapOverlay) {
+                this.mapOverlay = new google.maps.OverlayView();
+                this.mapOverlay.onAdd = () => {};
+                this.mapOverlay.draw = () => {};
+                this.mapOverlay.onRemove = () => {};
+            }
+            this.mapOverlay.setMap(this.map);
+            
             // 브이월드 일반 지도 타일 레이어 정의
             const vworldRoadmapType = new google.maps.ImageMapType({
                 getTileUrl: function(coord, zoom) {
@@ -5444,6 +5492,7 @@ class DxfPhotoEditor {
             this.currentLocationInfoWindow.close();
             this.currentLocationInfoWindow = null;
         }
+        this.currentLocationData = null;
     }
     
     /**
@@ -5465,6 +5514,7 @@ class DxfPhotoEditor {
                 // 마커가 뷰에서 벗어나면 자동으로 제거
                 this.currentLocationMarker.setMap(null);
                 this.currentLocationMarker = null;
+                this.currentLocationData = null;
                 console.log('📍 현재 위치 마커가 화면 밖으로 나가 제거됨');
             }
         }
@@ -5532,6 +5582,15 @@ class DxfPhotoEditor {
             this.map.setCenter(currentLocation);
             this.map.setZoom(Math.max(currentZoom, 15));
             
+            // 현재 위치 정보 저장
+            this.currentLocationData = {
+                lat,
+                lng,
+                accuracy,
+                positionTime,
+                isMobile
+            };
+            
             // 현재 위치 마커 생성
             this.currentLocationMarker = new google.maps.Marker({
                 position: currentLocation,
@@ -5552,34 +5611,7 @@ class DxfPhotoEditor {
             
             // 마커 클릭 시 정보창 표시
             this.currentLocationMarker.addListener('click', () => {
-                const infoContent = `
-                    <div style="padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                        <div style="font-weight: 700; font-size: 14px; margin-bottom: 8px;">📍 현재 위치</div>
-                        <div style="font-size: 12px; color: #666; line-height: 1.6;">
-                            <div>위도: ${lat.toFixed(6)}</div>
-                            <div>경도: ${lng.toFixed(6)}</div>
-                            <div>정확도: ${accuracy.toFixed(0)}m</div>
-                            <div>획득: ${positionTime.toLocaleTimeString('ko-KR')}</div>
-                            ${timeDiff > 10 ? '<div style="color: #ef4444;">⚠️ ' + timeDiff.toFixed(0) + '초 전 데이터</div>' : ''}
-                        </div>
-                    </div>
-                `;
-                
-                // 기존 정보창 닫기
-                if (this.currentLocationInfoWindow) {
-                    this.currentLocationInfoWindow.close();
-                }
-                
-                // 정보창 표시
-                this.currentLocationInfoWindow = new google.maps.InfoWindow({
-                    content: infoContent,
-                    maxWidth: isMobile ? 280 : 320
-                });
-                this.currentLocationInfoWindow.open(this.map, this.currentLocationMarker);
-                
-                // 줌 조정
-                this.map.setZoom(15);
-                this.map.panTo(currentLocation);
+                this.openCurrentLocationInfo();
             });
             
             console.log('✅ 현재 위치 표시 완료 (정확도: ' + accuracy.toFixed(0) + 'm)');
@@ -5605,6 +5637,100 @@ class DxfPhotoEditor {
             
             this.showToast(errorMessage);
         }
+    }
+    
+    /**
+     * 현재 위치 정보창 표시
+     */
+    openCurrentLocationInfo() {
+        if (!this.map || !this.currentLocationData) {
+            this.showToast('현재 위치 정보가 없습니다. 다시 측정해주세요.');
+            return;
+        }
+        
+        const { lat, lng, accuracy, positionTime, isMobile } = this.currentLocationData;
+        const now = new Date();
+        const timeDiff = Math.max(0, (now - positionTime) / 1000);
+        const latText = lat.toFixed(6);
+        const lngText = lng.toFixed(6);
+        const accuracyText = accuracy.toFixed(0);
+        const infoContent = `
+            <div style="padding: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                <div style="font-weight: 700; font-size: 14px; margin-bottom: 8px;">📍 현재 위치</div>
+                <div style="font-size: 12px; color: #666; line-height: 1.6;">
+                    <div>위도: ${latText}</div>
+                    <div>경도: ${lngText}</div>
+                    <div>정확도: ${accuracyText}m</div>
+                    <div>획득: ${positionTime.toLocaleTimeString('ko-KR')}</div>
+                    ${timeDiff > 10 ? `<div style="color: #ef4444;">⚠️ ${timeDiff.toFixed(0)}초 전 데이터</div>` : ''}
+                </div>
+            </div>
+        `;
+        
+        if (!this.currentLocationInfoWindow) {
+            this.currentLocationInfoWindow = new google.maps.InfoWindow({
+                maxWidth: isMobile ? 280 : 320
+            });
+        }
+        this.currentLocationInfoWindow.setContent(infoContent);
+        
+        const latLng = new google.maps.LatLng(lat, lng);
+        if (this.currentLocationMarker) {
+            this.currentLocationInfoWindow.open(this.map, this.currentLocationMarker);
+        } else {
+            this.currentLocationInfoWindow.setPosition(latLng);
+            this.currentLocationInfoWindow.open(this.map);
+        }
+        
+        try {
+            const currentZoom = this.map.getZoom();
+            this.map.setZoom(Math.max(currentZoom || 15, 15));
+            this.map.panTo(latLng);
+        } catch (error) {
+            console.warn('⚠️ 현재 위치로 지도 이동 실패:', error);
+        }
+    }
+    
+    /**
+     * 현재 위치 이모지 근처 탭 여부 확인
+     */
+    isTapOnCurrentLocation(screenX, screenY) {
+        if (!this.currentLocationData || !this.isMapMode) {
+            return false;
+        }
+        const screenPos = this.getCurrentLocationScreenPosition();
+        if (!screenPos) {
+            return false;
+        }
+        const distance = Math.hypot(screenX - screenPos.x, screenY - screenPos.y);
+        return distance <= 40; // 40px 이내를 탭으로 인식
+    }
+    
+    /**
+     * 현재 위치를 화면 좌표로 변환
+     */
+    getCurrentLocationScreenPosition() {
+        if (!this.map || !this.mapOverlay || !this.currentLocationData) {
+            return null;
+        }
+        const projection = this.mapOverlay.getProjection();
+        if (!projection) {
+            return null;
+        }
+        const latLng = new google.maps.LatLng(this.currentLocationData.lat, this.currentLocationData.lng);
+        const containerPoint = projection.fromLatLngToContainerPixel(latLng);
+        if (!containerPoint) {
+            return null;
+        }
+        const mapDiv = this.map.getDiv();
+        if (!mapDiv) {
+            return null;
+        }
+        const rect = mapDiv.getBoundingClientRect();
+        return {
+            x: rect.left + containerPoint.x,
+            y: rect.top + containerPoint.y
+        };
     }
     
     /**
